@@ -26,8 +26,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0;
-  // Relay URL — configurable; defaults to relay-poc via Headscale
-  static const _relayUrl = 'http://10.71.0.1:8086';
+  // Relay URL — localhost tunnel for dev (ssh -L 8086:192.168.0.119:8086 root@10.51.1.101)
+  // Production: http://10.71.0.1:8086 (Headscale)
+  static const _relayUrl = 'http://localhost:8086';
   final _relay = RelayClient(_relayUrl);
 
   @override
