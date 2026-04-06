@@ -9,7 +9,7 @@ services:
       restart_policy: {condition: any}
       labels:
         - traefik.enable=true
-        - traefik.http.routers.dudenest-web.rule=Host(`app.dudenest.com`)
+        - traefik.http.routers.dudenest-web.rule=Host(`dudenest.com`) || Host(`app.dudenest.com`)
         - traefik.http.routers.dudenest-web.entrypoints=web
         - traefik.http.services.dudenest-web.loadbalancer.server.port=80
         - traefik.docker.network=PROXY_NETOL_PROD
