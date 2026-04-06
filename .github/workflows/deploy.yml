@@ -32,7 +32,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -46,6 +46,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
       - name: Deploy to Docker Swarm
         env:
           IMAGE_TAG: ${{ github.sha }}
@@ -57,4 +60,6 @@ jobs:
             dudenest-web
 
       - name: Verify
-        run: docker stack ps dudenest-web --no-trunc
+        run: |
+          sleep 5
+          docker service ps dudenest-web_web --no-trunc | head -10
