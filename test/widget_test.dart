@@ -11,6 +11,7 @@ import 'package:dudenest/main.dart';
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const DudenestApp());
-    expect(find.text('Settings'), findsOneWidget); // nav bar destination
+    // Not logged in → shows login screen
+    expect(find.text('Continue with Google'), findsOneWidget);
   });
 }

@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
+import 'core/auth/auth_service.dart';
 import 'core/network/relay_client.dart';
+import 'features/auth/login_screen.dart';
 import 'features/storage_accounts/accounts_screen.dart';
 import 'features/upload/upload_screen.dart';
 import 'features/relay/relay_screen.dart';
 
-void main() => runApp(const DudenestApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthService().init(); // loads token from localStorage + handles OAuth callback
+  runApp(const DudenestApp());
+}
 
 class DudenestApp extends StatefulWidget {
   const DudenestApp({super.key});
@@ -17,6 +23,7 @@ class DudenestApp extends StatefulWidget {
 class DudenestAppState extends State<DudenestApp> {
   ThemeMode _themeMode = ThemeMode.system;
   void setThemeMode(ThemeMode mode) => setState(() => _themeMode = mode);
+  void refresh() => setState(() {}); // called after sign-out to rebuild
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +33,7 @@ class DudenestAppState extends State<DudenestApp> {
       themeMode: _themeMode,
       theme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.light, useMaterial3: true),
       darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark, useMaterial3: true),
-      home: const HomeScreen(),
+      home: AuthService().isLoggedIn ? const HomeScreen() : const LoginScreen(),
     );
   }
 }
@@ -72,9 +79,30 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = DudenestApp.of(context);
+    final user = AuthService().user;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(children: [
+        // Logged-in user info
+        if (user != null) ...[
+          ListTile(
+            leading: CircleAvatar(
+              backgroundImage: user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
+              child: user.avatarUrl == null ? Text(user.email[0].toUpperCase()) : null,
+            ),
+            title: Text(user.name ?? user.email),
+            subtitle: Text('${user.provider} · ${user.email}'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text('Sign out', style: TextStyle(color: Colors.red)),
+            onTap: () async {
+              await AuthService().signOut();
+              app.refresh();
+            },
+          ),
+          const Divider(),
+        ],
         const ListTile(title: Text('Theme', style: TextStyle(fontWeight: FontWeight.bold))),
         ListTile(
           leading: const Icon(Icons.brightness_auto),
