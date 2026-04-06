@@ -39,9 +39,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0;
-  // Relay URL — localhost tunnel for dev (ssh -L 8086:192.168.0.119:8086 root@10.51.1.101)
-  // Production: http://10.71.0.1:8086 (Headscale)
-  static const _relayUrl = 'http://localhost:8086';
+  // Relay URL — Cloudflare Tunnel (relay-poc → relay.dudenest.com)
+  // Dev: http://localhost:8086 (ssh -L 8086:192.168.0.119:8086 root@10.51.1.101)
+  static const _relayUrl = 'https://relay.dudenest.com';
   final _relay = RelayClient(_relayUrl);
 
   @override
