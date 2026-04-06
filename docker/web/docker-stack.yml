@@ -1,0 +1,19 @@
+version: "3.8"
+services:
+  web:
+    image: ghcr.io/dudenest/dudenest:${IMAGE_TAG:-latest}
+    networks: [PROXY_NETOL_PROD]
+    deploy:
+      replicas: 2
+      update_config: {parallelism: 1, delay: 10s, order: start-first}
+      restart_policy: {condition: any}
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.dudenest-web.rule=Host(`app.dudenest.com`)
+        - traefik.http.routers.dudenest-web.entrypoints=web
+        - traefik.http.services.dudenest-web.loadbalancer.server.port=80
+        - traefik.docker.network=PROXY_NETOL_PROD
+
+networks:
+  PROXY_NETOL_PROD:
+    external: true

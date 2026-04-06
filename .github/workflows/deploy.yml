@@ -1,0 +1,53 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/dudenest/dudenest
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, netol-swarm]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Docker Swarm
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_TAG=$IMAGE_TAG docker stack deploy \
+            --compose-file docker/web/docker-stack.yml \
+            --with-registry-auth \
+            --resolve-image always \
+            dudenest-web
+
+      - name: Verify
+        run: docker stack ps dudenest-web --no-trunc
