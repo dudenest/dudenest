@@ -15,7 +15,7 @@ class DudenestApp extends StatefulWidget {
 }
 
 class DudenestAppState extends State<DudenestApp> {
-  ThemeMode _themeMode = ThemeMode.system; // default: follow system
+  ThemeMode _themeMode = ThemeMode.system;
   void setThemeMode(ThemeMode mode) => setState(() => _themeMode = mode);
 
   @override
@@ -38,7 +38,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _tab = 0;
+  int _tab = 0; // 0=Files, 1=Upload, 2=Settings
   // Relay URL — Cloudflare Tunnel (relay-poc → relay.dudenest.com)
   // Dev: http://localhost:8086 (ssh -L 8086:192.168.0.119:8086 root@10.51.1.101)
   static const _relayUrl = 'https://relay.dudenest.com';
@@ -47,10 +47,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      AccountsScreen(relay: _relay),
-      UploadScreen(relay: _relay),
       RelayScreen(relay: _relay),
-      const SettingsScreen(),
+      UploadScreen(relay: _relay),
+      SettingsScreen(relay: _relay),
     ];
     return Scaffold(
       body: screens[_tab],
@@ -58,9 +57,8 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.cloud), label: 'Accounts'),
-          NavigationDestination(icon: Icon(Icons.upload), label: 'Upload'),
           NavigationDestination(icon: Icon(Icons.folder), label: 'Files'),
+          NavigationDestination(icon: Icon(Icons.upload), label: 'Upload'),
           NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
@@ -69,7 +67,8 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+  final RelayClient relay;
+  const SettingsScreen({super.key, required this.relay});
   @override
   Widget build(BuildContext context) {
     final app = DudenestApp.of(context);
@@ -91,6 +90,18 @@ class SettingsScreen extends StatelessWidget {
           leading: const Icon(Icons.dark_mode),
           title: const Text('Dark'),
           onTap: () => app.setThemeMode(ThemeMode.dark),
+        ),
+        const Divider(),
+        const ListTile(title: Text('Storage', style: TextStyle(fontWeight: FontWeight.bold))),
+        ListTile(
+          leading: const Icon(Icons.cloud),
+          title: const Text('Cloud Accounts'),
+          subtitle: const Text('Connected Google Drive accounts'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay)),
+          ),
         ),
       ]),
     );

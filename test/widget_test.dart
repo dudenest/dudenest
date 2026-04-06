@@ -11,6 +11,6 @@ import 'package:dudenest/main.dart';
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const DudenestApp());
-    expect(find.text('Accounts'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget); // nav bar destination
   });
 }
