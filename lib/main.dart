@@ -6,13 +6,26 @@ import 'features/relay/relay_screen.dart';
 
 void main() => runApp(const DudenestApp());
 
-class DudenestApp extends StatelessWidget {
+class DudenestApp extends StatefulWidget {
   const DudenestApp({super.key});
+  static DudenestAppState of(BuildContext context) =>
+      context.findAncestorStateOfType<DudenestAppState>()!;
+  @override
+  State<DudenestApp> createState() => DudenestAppState();
+}
+
+class DudenestAppState extends State<DudenestApp> {
+  ThemeMode _themeMode = ThemeMode.system; // default: follow system
+  void setThemeMode(ThemeMode mode) => setState(() => _themeMode = mode);
+
   @override
   Widget build(BuildContext context) {
+    const seed = Colors.indigo;
     return MaterialApp(
       title: 'Dudenest',
-      theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
+      themeMode: _themeMode,
+      theme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.light, useMaterial3: true),
+      darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark, useMaterial3: true),
       home: const HomeScreen(),
     );
   }
@@ -37,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
       AccountsScreen(relay: _relay),
       UploadScreen(relay: _relay),
       RelayScreen(relay: _relay),
+      const SettingsScreen(),
     ];
     return Scaffold(
       body: screens[_tab],
@@ -47,8 +61,38 @@ class _HomeScreenState extends State<HomeScreen> {
           NavigationDestination(icon: Icon(Icons.cloud), label: 'Accounts'),
           NavigationDestination(icon: Icon(Icons.upload), label: 'Upload'),
           NavigationDestination(icon: Icon(Icons.folder), label: 'Files'),
+          NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
+    );
+  }
+}
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final app = DudenestApp.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(children: [
+        const ListTile(title: Text('Theme', style: TextStyle(fontWeight: FontWeight.bold))),
+        ListTile(
+          leading: const Icon(Icons.brightness_auto),
+          title: const Text('System default'),
+          onTap: () => app.setThemeMode(ThemeMode.system),
+        ),
+        ListTile(
+          leading: const Icon(Icons.light_mode),
+          title: const Text('Light'),
+          onTap: () => app.setThemeMode(ThemeMode.light),
+        ),
+        ListTile(
+          leading: const Icon(Icons.dark_mode),
+          title: const Text('Dark'),
+          onTap: () => app.setThemeMode(ThemeMode.dark),
+        ),
+      ]),
     );
   }
 }
