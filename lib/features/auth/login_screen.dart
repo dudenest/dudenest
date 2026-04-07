@@ -4,10 +4,21 @@ import '../../core/auth/auth_service.dart';
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
 
+  static const _version = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Text(
+          '$_version · © ${DateTime.now().year} Dudenest',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 380),
