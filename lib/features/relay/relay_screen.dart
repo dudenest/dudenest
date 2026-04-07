@@ -38,7 +38,7 @@ class _RelayScreenState extends State<RelayScreen> {
       final bytes = await widget.relay.downloadFile(fileId);
       await downloadBytes(name, bytes); // web: blob download; native: save to temp
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Pobrano: $name')));
+          SnackBar(content: Text('Downloaded: $name')));
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); });
     }
@@ -48,14 +48,14 @@ class _RelayScreenState extends State<RelayScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Usuń plik'),
-        content: Text('Czy na pewno usunąć "$name"?'),
+        title: const Text('Delete file'),
+        content: Text('Are you sure you want to delete "$name"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Anuluj')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Usuń'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -65,7 +65,7 @@ class _RelayScreenState extends State<RelayScreen> {
       await widget.relay.deleteFile(fileId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Usunięto: $name'),
+          content: Text('Deleted: $name'),
           backgroundColor: Colors.green,
         ));
         _load();
@@ -92,8 +92,8 @@ class _RelayScreenState extends State<RelayScreen> {
   }
 
   Widget _actionRow(String id, String name) => Row(mainAxisSize: MainAxisSize.min, children: [
-    IconButton(icon: const Icon(Icons.download), tooltip: 'Pobierz', onPressed: () => _download(id, name)),
-    IconButton(icon: const Icon(Icons.delete, color: Colors.red), tooltip: 'Usuń', onPressed: () => _confirmDelete(id, name)),
+    IconButton(icon: const Icon(Icons.download), tooltip: 'Download', onPressed: () => _download(id, name)),
+    IconButton(icon: const Icon(Icons.delete, color: Colors.red), tooltip: 'Delete', onPressed: () => _confirmDelete(id, name)),
   ]);
 
   // ─── List view (names truncated with ellipsis) ──────────────────────────────
@@ -184,9 +184,9 @@ class _RelayScreenState extends State<RelayScreen> {
   };
 
   String _modeLabel(_ViewMode m) => switch (m) {
-    _ViewMode.list => 'Lista',
-    _ViewMode.longNames => 'Długie nazwy',
-    _ViewMode.grid => 'Miniatury',
+    _ViewMode.list => 'List',
+    _ViewMode.longNames => 'Long names',
+    _ViewMode.grid => 'Thumbnails',
   };
 
   static const _kVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
@@ -200,7 +200,7 @@ class _RelayScreenState extends State<RelayScreen> {
         actions: [
           // Version badge — top-right corner, always visible
           Tooltip(
-            message: 'Wersja aplikacji',
+            message: 'App version',
             child: Container(
               margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -219,7 +219,7 @@ class _RelayScreenState extends State<RelayScreen> {
               tooltip: _modeLabel(mode),
               onPressed: () => setState(() => _viewMode = mode),
             ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Odśwież'),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Refresh'),
         ],
       ),
       body: _loading

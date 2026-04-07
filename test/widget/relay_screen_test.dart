@@ -49,9 +49,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.delete));
     await tester.pumpAndSettle();
-    expect(find.text('Usuń plik'), findsOneWidget);
-    expect(find.text('Anuluj'), findsOneWidget);
-    expect(find.text('Usuń'), findsOneWidget);
+    expect(find.text('Delete file'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
   });
 
   testWidgets('cancel delete does not remove file', (tester) async {
@@ -63,7 +63,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.delete));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Anuluj'));
+    await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(find.text('photo.jpg'), findsOneWidget); // file still visible
   });

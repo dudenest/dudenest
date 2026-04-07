@@ -106,7 +106,7 @@ class SettingsScreen extends StatelessWidget {
         // Version — displayed right after user info
         ListTile(
           leading: const Icon(Icons.tag),
-          title: const Text('Wersja'),
+          title: const Text('Version'),
           trailing: const Text(
             String.fromEnvironment('APP_VERSION', defaultValue: 'dev'),
             style: TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600),
