@@ -103,6 +103,16 @@ class SettingsScreen extends StatelessWidget {
           ),
           const Divider(),
         ],
+        // Wersja — wyświetlana zaraz po user info
+        ListTile(
+          leading: const Icon(Icons.tag),
+          title: const Text('Wersja'),
+          trailing: const Text(
+            String.fromEnvironment('APP_VERSION', defaultValue: 'dev'),
+            style: TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ),
+        const Divider(),
         const ListTile(title: Text('Theme', style: TextStyle(fontWeight: FontWeight.bold))),
         ListTile(
           leading: const Icon(Icons.brightness_auto),
@@ -129,15 +139,6 @@ class SettingsScreen extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay)),
-          ),
-        ),
-        const Divider(),
-        const ListTile(
-          leading: Icon(Icons.info_outline),
-          title: Text('Wersja'),
-          trailing: Text(
-            String.fromEnvironment('APP_VERSION', defaultValue: 'dev'),
-            style: TextStyle(fontFamily: 'monospace', fontSize: 12),
           ),
         ),
       ]),

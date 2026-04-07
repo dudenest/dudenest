@@ -22,7 +22,11 @@ jobs:
 
       - run: flutter pub get
 
-      - run: flutter build web --release --pwa-strategy none --dart-define=APP_VERSION=sha-${GITHUB_SHA:0:7}
+      - name: Build Flutter web
+        run: |
+          VERSION="sha-$(echo "$GITHUB_SHA" | cut -c1-7)"
+          echo "APP_VERSION=$VERSION"
+          flutter build web --release --pwa-strategy none "--dart-define=APP_VERSION=$VERSION"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

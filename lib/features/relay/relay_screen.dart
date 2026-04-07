@@ -196,17 +196,23 @@ class _RelayScreenState extends State<RelayScreen> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Files'),
-            Text(_kVersion,
-                style: TextStyle(fontSize: 10, fontFamily: 'monospace',
-                    color: scheme.onSurface.withOpacity(0.45))),
-          ],
-        ),
+        title: const Text('Files'),
         actions: [
+          // Version badge — top-right corner, always visible
+          Tooltip(
+            message: 'Wersja aplikacji',
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(_kVersion,
+                style: TextStyle(fontSize: 10, fontFamily: 'monospace',
+                    color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600)),
+            ),
+          ),
           for (final mode in _ViewMode.values)
             IconButton(
               icon: Icon(_modeIcon(mode), color: _viewMode == mode ? scheme.primary : null),
