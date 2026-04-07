@@ -54,7 +54,7 @@ This is the **client application** (Flutter). For other components:
 ### Requirements
 - Flutter 3.x
 - A running Dudenest Relay (see [dudenest-relay](https://github.com/dudenest/dudenest-relay))
-- A Dudenest account (self-hosted or cloud)
+- A Dudenest account — sign in with Google, GitHub, or Apple
 
 ### Development
 
@@ -62,36 +62,58 @@ This is the **client application** (Flutter). For other components:
 git clone https://github.com/dudenest/dudenest.git
 cd dudenest
 flutter pub get
-flutter run
+flutter run -d chrome      # web
+flutter run                # native (iOS/Android/desktop)
 ```
 
-### Environment
+### Local dev with relay
 
 ```bash
-cp .env.example .env
-# Edit .env with your backend URL and settings
+# Forward relay port over SSH tunnel
+ssh -L 8086:192.168.0.119:8086 root@10.51.1.101
+
+# The app uses https://relay.dudenest.com in production
+# For local testing, change _relayUrl in lib/main.dart to http://localhost:8086
 ```
+
+## Authentication
+
+Users authenticate via OAuth2 (Google, GitHub, Apple). The flow:
+
+```
+1. User taps "Continue with Google"
+2. App redirects to: https://api.dudenest.com/auth/google?return_url=https://dudenest.com
+3. User authorizes on Google
+4. Backend redirects to: https://dudenest.com?token=JWT&user=base64(JSON)
+5. App reads token from URL, stores in localStorage (SharedPreferences)
+6. URL cleaned via history.replaceState
+```
+
+Token: HS256 JWT, 30-day expiry, signed with `JWT_SECRET`.
+User data stored in `localStorage` as `auth_token` + `auth_user` (base64 JSON).
 
 ## Project Structure
 
 ```
 lib/
 ├── core/
-│   ├── auth/          # Authentication (JWT, OAuth)
-│   ├── network/       # API client, WebSocket, tunnel
-│   └── crypto/        # Client-side crypto utilities
+│   ├── auth/          # OAuth service, JWT model, web utils (conditional import)
+│   └── network/       # RelayClient (HTTP to relay)
 ├── features/
-│   ├── gallery/       # Photo/video timeline grid
-│   ├── upload/        # File upload flow
-│   ├── player/        # Photo viewer, video player
-│   ├── albums/        # Albums and collections
-│   ├── storage_accounts/ # Cloud account management ("bricks")
-│   ├── relay/         # Relay connection management
-│   └── settings/      # App settings
-└── shared/
-    ├── widgets/       # Reusable UI components
-    ├── theme/         # Design system, colors, typography
-    └── utils/         # Helpers, formatters
+│   ├── auth/          # LoginScreen (Google / GitHub / Apple buttons)
+│   ├── upload/        # UploadScreen with multi-file + progress animation
+│   ├── relay/         # RelayScreen (file browser)
+│   └── storage_accounts/ # AccountsScreen (Google Drive accounts)
+└── main.dart          # DudenestApp, HomeScreen, SettingsScreen
+test/
+├── unit/
+│   ├── user_model_test.dart   # AuthUser fromJson/toJson
+│   └── relay_client_test.dart # RelayClient HTTP calls
+└── widget/
+    ├── login_screen_test.dart    # OAuth button rendering
+    ├── upload_screen_test.dart   # Upload flow
+    ├── accounts_screen_test.dart # Accounts list states
+    └── relay_screen_test.dart    # File browser
 ```
 
 ## Contributing
