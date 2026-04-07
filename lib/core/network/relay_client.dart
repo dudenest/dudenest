@@ -45,4 +45,43 @@ class RelayClient {
     final resp = await _http.delete(Uri.parse('$baseUrl/files/$fileId'));
     if (resp.statusCode != 200) throw Exception('DELETE /files/$fileId: ${resp.statusCode}');
   }
+
+  // POST /auth/session — start browser OAuth flow, returns step with screenshot+fields
+  Future<Map<String, dynamic>> startAuthSession(String provider) async {
+    final resp = await _http.post(Uri.parse('$baseUrl/auth/session'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'provider': provider}));
+    if (resp.statusCode != 200) throw Exception('POST /auth/session: ${resp.statusCode}: ${resp.body}');
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  // POST /auth/input — fill a field in the browser
+  Future<Map<String, dynamic>> authInput(String sessionId, String selector, String text) async {
+    final resp = await _http.post(Uri.parse('$baseUrl/auth/input'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'session_id': sessionId, 'selector': selector, 'text': text}));
+    if (resp.statusCode != 200) throw Exception('POST /auth/input: ${resp.statusCode}');
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  // POST /auth/click — click an element in the browser
+  Future<Map<String, dynamic>> authClick(String sessionId, String selector) async {
+    final resp = await _http.post(Uri.parse('$baseUrl/auth/click'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'session_id': sessionId, 'selector': selector}));
+    if (resp.statusCode != 200) throw Exception('POST /auth/click: ${resp.statusCode}');
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  // GET /auth/status/{id} — poll current session status
+  Future<Map<String, dynamic>> authStatus(String sessionId) async {
+    final resp = await _http.get(Uri.parse('$baseUrl/auth/status/$sessionId'));
+    if (resp.statusCode != 200) throw Exception('GET /auth/status: ${resp.statusCode}');
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  // POST /auth/close/{id} — close session
+  Future<void> authClose(String sessionId) async {
+    await _http.post(Uri.parse('$baseUrl/auth/close/$sessionId'));
+  }
 }

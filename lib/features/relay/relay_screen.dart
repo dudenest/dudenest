@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/network/relay_client.dart';
 import '../../core/auth/web_utils.dart';
 
-enum _ViewMode { list, longNames, grid }
+enum _ViewMode { grid, list, longNames }
 
 class RelayScreen extends StatefulWidget {
   final RelayClient relay;
@@ -15,7 +15,7 @@ class _RelayScreenState extends State<RelayScreen> {
   List<Map<String, dynamic>> _files = [];
   bool _loading = true;
   String? _error;
-  _ViewMode _viewMode = _ViewMode.list;
+  _ViewMode _viewMode = _ViewMode.grid;
 
   static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif','svg'};
   static const _videoExts = {'mp4','mov','avi','mkv','webm','m4v','3gp'};
@@ -36,9 +36,8 @@ class _RelayScreenState extends State<RelayScreen> {
   Future<void> _download(String fileId, String name) async {
     try {
       final bytes = await widget.relay.downloadFile(fileId);
-      await downloadBytes(name, bytes); // web: blob download; native: save to temp
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Downloaded: $name')));
+      await downloadBytes(name, bytes);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Downloaded: $name')));
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); });
     }
@@ -49,14 +48,11 @@ class _RelayScreenState extends State<RelayScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete file'),
-        content: Text('Are you sure you want to delete "$name"?'),
+        content: Text('Delete "$name"?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Delete')),
         ],
       ),
     );
@@ -64,10 +60,7 @@ class _RelayScreenState extends State<RelayScreen> {
     try {
       await widget.relay.deleteFile(fileId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Deleted: $name'),
-          backgroundColor: Colors.green,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted'), backgroundColor: Colors.green));
         _load();
       }
     } catch (e) {
@@ -84,7 +77,6 @@ class _RelayScreenState extends State<RelayScreen> {
 
   bool _isImage(String name) => _imageExts.contains(name.split('.').last.toLowerCase());
   bool _isVideo(String name) => _videoExts.contains(name.split('.').last.toLowerCase());
-
   IconData _fileIcon(String name) {
     if (_isImage(name)) return Icons.image;
     if (_isVideo(name)) return Icons.play_circle_outline;
@@ -96,7 +88,50 @@ class _RelayScreenState extends State<RelayScreen> {
     IconButton(icon: const Icon(Icons.delete, color: Colors.red), tooltip: 'Delete', onPressed: () => _confirmDelete(id, name)),
   ]);
 
-  // ─── List view (names truncated with ellipsis) ──────────────────────────────
+  // ─── Thumbnail grid: tiles flush, 1px separator line, no names ─────────────
+  Widget _buildGrid() => GridView.builder(
+    padding: EdgeInsets.zero,
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 3,
+      mainAxisSpacing: 1,
+      crossAxisSpacing: 1,
+    ),
+    itemCount: _files.length,
+    itemBuilder: (ctx, i) {
+      final f = _files[i];
+      final id = f['file_id'] as String? ?? '';
+      final name = f['name'] as String? ?? id;
+      final isImg = _isImage(name);
+      return GestureDetector(
+        onTap: () {
+          if (isImg) {
+            Navigator.push(ctx, MaterialPageRoute(
+              builder: (_) => _FullscreenViewer(
+                url: '${widget.relay.baseUrl}/files/$id',
+                name: name, relay: widget.relay, fileId: id,
+                onDelete: () { Navigator.pop(ctx); _load(); },
+              ),
+            ));
+          } else {
+            _download(id, name);
+          }
+        },
+        onLongPress: () => _confirmDelete(id, name),
+        child: isImg
+            ? Image.network('${widget.relay.baseUrl}/files/$id', fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0D1117),
+                    child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040)))),
+                loadingBuilder: (_, child, p) => p == null ? child
+                    : Container(color: const Color(0xFF0D1117),
+                        child: const Center(child: CircularProgressIndicator(strokeWidth: 1))),
+              )
+            : Container(color: const Color(0xFF111827),
+                child: Center(child: Icon(_fileIcon(name), size: 36, color: const Color(0xFF6080A0)))),
+      );
+    },
+  );
+
+  // ─── List view ──────────────────────────────────────────────────────────────
   Widget _buildList() => ListView.builder(
     itemCount: _files.length,
     itemBuilder: (ctx, i) {
@@ -106,13 +141,13 @@ class _RelayScreenState extends State<RelayScreen> {
       return ListTile(
         leading: Icon(_fileIcon(name)),
         title: Text(name, overflow: TextOverflow.ellipsis),
-        subtitle: Text('${_formatSize(f['size'])} · ${id.length >= 8 ? '${id.substring(0, 8)}…' : id}'),
+        subtitle: Text('${_formatSize(f['size'])} · ${id.length >= 8 ? '${id.substring(0, 8)}...' : id}'),
         trailing: _actionRow(id, name),
       );
     },
   );
 
-  // ─── Long names view (full filename, wrapping) ──────────────────────────────
+  // ─── Long names view ────────────────────────────────────────────────────────
   Widget _buildLongNames() => ListView.builder(
     itemCount: _files.length,
     itemBuilder: (ctx, i) {
@@ -121,7 +156,7 @@ class _RelayScreenState extends State<RelayScreen> {
       final name = f['name'] as String? ?? id;
       return ListTile(
         leading: Icon(_fileIcon(name)),
-        title: Text(name), // no overflow — wraps naturally
+        title: Text(name),
         subtitle: Text(_formatSize(f['size'])),
         trailing: _actionRow(id, name),
         isThreeLine: name.length > 35,
@@ -129,64 +164,15 @@ class _RelayScreenState extends State<RelayScreen> {
     },
   );
 
-  // ─── Grid / thumbnail view ──────────────────────────────────────────────────
-  // Images: fetched from relay GET /files/{id}
-  // Videos & other: icon placeholder
-  // Tap = download; long-press = delete confirmation
-  // TODO relay: add GET /files/{id}/thumbnail for efficient small previews
-  Widget _buildGrid() => GridView.builder(
-    padding: const EdgeInsets.all(8),
-    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-      maxCrossAxisExtent: 160,
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-    ),
-    itemCount: _files.length,
-    itemBuilder: (ctx, i) {
-      final f = _files[i];
-      final id = f['file_id'] as String? ?? '';
-      final name = f['name'] as String? ?? id;
-      final isImg = _isImage(name);
-      return GestureDetector(
-        onTap: () => _download(id, name),
-        onLongPress: () => _confirmDelete(id, name),
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(children: [
-            Expanded(
-              child: isImg
-                  ? Image.network(
-                      '${widget.relay.baseUrl}/files/$id',
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.broken_image, size: 40)),
-                      loadingBuilder: (_, child, progress) => progress == null
-                          ? child
-                          : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : Center(child: Icon(_fileIcon(name), size: 48, color: Colors.grey)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: Text(name, style: const TextStyle(fontSize: 11),
-                  overflow: TextOverflow.ellipsis, maxLines: 2, textAlign: TextAlign.center),
-            ),
-          ]),
-        ),
-      );
-    },
-  );
-
   IconData _modeIcon(_ViewMode m) => switch (m) {
+    _ViewMode.grid => Icons.grid_view,
     _ViewMode.list => Icons.list,
     _ViewMode.longNames => Icons.text_snippet,
-    _ViewMode.grid => Icons.grid_view,
   };
-
   String _modeLabel(_ViewMode m) => switch (m) {
+    _ViewMode.grid => 'Thumbnails',
     _ViewMode.list => 'List',
     _ViewMode.longNames => 'Long names',
-    _ViewMode.grid => 'Thumbnails',
   };
 
   static const _kVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
@@ -198,19 +184,13 @@ class _RelayScreenState extends State<RelayScreen> {
       appBar: AppBar(
         title: const Text('Files'),
         actions: [
-          // Version badge — top-right corner, always visible
-          Tooltip(
-            message: 'App version',
+          Tooltip(message: 'App version',
             child: Container(
               margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(_kVersion,
-                style: TextStyle(fontSize: 10, fontFamily: 'monospace',
-                    color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600)),
+              decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
+              child: Text(_kVersion, style: TextStyle(fontSize: 10, fontFamily: 'monospace',
+                  color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600)),
             ),
           ),
           for (final mode in _ViewMode.values)
@@ -229,10 +209,66 @@ class _RelayScreenState extends State<RelayScreen> {
               : _files.isEmpty
                   ? const Center(child: Text('No files yet. Upload something first.'))
                   : switch (_viewMode) {
+                      _ViewMode.grid => _buildGrid(),
                       _ViewMode.list => _buildList(),
                       _ViewMode.longNames => _buildLongNames(),
-                      _ViewMode.grid => _buildGrid(),
                     },
+    );
+  }
+}
+
+// ─── Fullscreen image viewer ─────────────────────────────────────────────────
+class _FullscreenViewer extends StatelessWidget {
+  final String url;
+  final String name;
+  final RelayClient relay;
+  final String fileId;
+  final VoidCallback onDelete;
+  const _FullscreenViewer({required this.url, required this.name, required this.relay,
+      required this.fileId, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(children: [
+        Center(
+          child: InteractiveViewer(
+            minScale: 0.5, maxScale: 8.0,
+            child: Image.network(url, fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white54, size: 64),
+              loadingBuilder: (_, child, p) => p == null ? child
+                  : const Center(child: CircularProgressIndicator(color: Colors.white54)),
+            ),
+          ),
+        ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              IconButton(icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+                  onPressed: () => Navigator.pop(context)),
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.white54),
+                onPressed: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Delete file'), content: Text('Delete "$name"?'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                        TextButton(onPressed: () => Navigator.pop(ctx, true),
+                            style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Delete')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) { await relay.deleteFile(fileId); onDelete(); }
+                },
+              ),
+            ]),
+          ),
+        ),
+      ]),
     );
   }
 }
