@@ -84,4 +84,24 @@ class RelayClient {
   Future<void> authClose(String sessionId) async {
     await _http.post(Uri.parse('$baseUrl/auth/close/$sessionId'));
   }
+
+  // --- Method A: Flutter-side OAuth (user's IP for login ✅) ---
+
+  // GET /auth/url?provider=gdrive&callback=<uri> — returns OAuth URL for Flutter to open in browser
+  Future<Map<String, dynamic>> getAuthUrl(String provider, String callbackUri) async {
+    final uri = Uri.parse('$baseUrl/auth/url').replace(queryParameters: {'provider': provider, 'callback': callbackUri});
+    final resp = await _http.get(uri);
+    if (resp.statusCode != 200) throw Exception('GET /auth/url: ${resp.statusCode}: ${resp.body}');
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  // POST /auth/exchange {provider, code, redirect_uri, request_id?} — relay exchanges code → stores token
+  Future<Map<String, dynamic>> exchangeOAuthCode(String provider, String code, String redirectUri, {String? requestId}) async {
+    final body = <String, dynamic>{'provider': provider, 'code': code, 'redirect_uri': redirectUri};
+    if (requestId != null) body['request_id'] = requestId;
+    final resp = await _http.post(Uri.parse('$baseUrl/auth/exchange'),
+        headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (resp.statusCode != 200) throw Exception('POST /auth/exchange: ${resp.statusCode}: ${resp.body}');
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
 }

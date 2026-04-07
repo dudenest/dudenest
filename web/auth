@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Connecting...</title></head>
+<body>
+<p>Authentication complete. This window will close automatically.</p>
+<script>
+  // flutter_web_auth_2 callback page — posts result back to main Flutter web app window.
+  // Google redirects here after OAuth consent: https://app.dudenest.com/auth?code=xxx
+  (function() {
+    var href = window.location.href;
+    if (window.opener) {
+      window.opener.postMessage({'flutter-web-auth-2': href}, window.location.origin);
+      window.close();
+    } else if (window.parent !== window) {
+      window.parent.postMessage({'flutter-web-auth-2': href}, window.location.origin);
+    }
+  })();
+</script>
+</body>
+</html>
