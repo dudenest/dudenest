@@ -103,7 +103,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           const Divider(),
         ],
-        // Wersja — wyświetlana zaraz po user info
+        // Version — displayed right after user info
         ListTile(
           leading: const Icon(Icons.tag),
           title: const Text('Wersja'),

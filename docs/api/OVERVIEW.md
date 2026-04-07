@@ -9,13 +9,13 @@
 
 ## Authentication
 
-Brak — API dostępne tylko przez WireGuard (Headscale). Sieć = granica bezpieczeństwa.
+None — API is accessible only through WireGuard (Headscale). The network perimeter is the security boundary.
 
 ---
 
 ## CORS
 
-Wszystkie endpointy zwracają:
+All endpoints return:
 ```
 Access-Control-Allow-Origin: *
 Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS
@@ -24,10 +24,10 @@ Access-Control-Allow-Headers: Content-Type
 
 ---
 
-## Endpointy
+## Endpoints
 
 ### GET /health
-Sprawdzenie czy relay działa.
+Check if the relay is running.
 ```
 200 OK
 ok
@@ -36,7 +36,7 @@ ok
 ---
 
 ### GET /providers
-Lista zalogowanych kont chmurowych z quotą.
+List of authenticated cloud accounts with quota.
 
 **Response 200:**
 ```json
@@ -56,7 +56,7 @@ Lista zalogowanych kont chmurowych z quotą.
 ---
 
 ### GET /files
-Lista wszystkich przesłanych plików (FileMaps).
+List all uploaded files (FileMaps).
 
 **Response 200:**
 ```json
@@ -76,9 +76,9 @@ Lista wszystkich przesłanych plików (FileMaps).
 ---
 
 ### POST /files/upload
-Upload pliku przez multipart/form-data.
+Upload a file via multipart/form-data.
 
-**Request:** `Content-Type: multipart/form-data`, pole `file`
+**Request:** `Content-Type: multipart/form-data`, field `file`
 
 **Response 200:**
 ```json
@@ -100,7 +100,7 @@ curl -X POST http://localhost:8086/files/upload \
 ---
 
 ### GET /files/{file_id}
-Download pliku — zwraca surowe bajty.
+Download a file — returns raw bytes.
 
 **Response 200:** `Content-Type: application/octet-stream`
 
@@ -112,7 +112,7 @@ curl http://localhost:8086/files/abc123def456 -o photo.jpg
 ---
 
 ### DELETE /files/{file_id}
-Usuwa plik ze wszystkich shardów w chmurze.
+Delete a file from all cloud shards.
 
 **Response 200:**
 ```json
@@ -122,38 +122,38 @@ Usuwa plik ze wszystkich shardów w chmurze.
 ---
 
 ### GET /auth/status
-Status sesji OAuth (browser auth API).
+OAuth session status (browser auth API).
 
 ### POST /auth/start
-Uruchamia sesję OAuth w Chromium (VNC display :99).
+Start an OAuth session in Chromium (VNC display :99).
 
 ### GET /auth/sessions
-Lista aktywnych sesji auth.
+List active auth sessions.
 
 ---
 
-## Błędy
+## Errors
 
-Wszystkie błędy zwracają JSON:
+All errors return JSON:
 ```json
-{"error": "opis błędu"}
+{"error": "error description"}
 ```
 
-| Kod | Znaczenie |
-|-----|-----------|
-| 400 | Brak pola `file` lub błąd parsowania |
-| 404 | Plik nie istnieje |
-| 500 | Błąd wewnętrzny relay (upload/download/erasure) |
-| 503 | Provider niedostępny |
+| Code | Meaning |
+|------|---------|
+| 400 | Missing `file` field or parse error |
+| 404 | File not found |
+| 500 | Internal relay error (upload/download/erasure) |
+| 503 | Provider unavailable |
 
 ---
 
-## Wydajność (benchmark 2026-04-06, relay-poc VM)
+## Performance (benchmark 2026-04-06, relay-poc VM)
 
-| Operacja | Wynik | Backend |
-|----------|-------|---------|
-| Upload 4MB | 0.9 MB/s | GDrive (9 shardów równolegle) |
-| Download 4MB | 3.2 MB/s | GDrive (6 shardów + RS decode) |
+| Operation | Result | Backend |
+|-----------|--------|---------|
+| Upload 4MB | 0.9 MB/s | GDrive (9 shards parallel) |
+| Download 4MB | 3.2 MB/s | GDrive (6 shards + RS decode) |
 | Upload baseline (local) | 19.8 MB/s | filesystem |
 
-Bottleneck: GDrive API (3 round-tripy/shard), nie kod relay.
+Bottleneck: GDrive API (3 round-trips/shard), not the relay code.

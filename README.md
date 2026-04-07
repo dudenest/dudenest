@@ -78,28 +78,28 @@ ssh -L 8086:192.168.0.119:8086 root@10.51.1.101
 
 ## Media Playback
 
-**Pliki multimedialne (zdjęcia, wideo) muszą być wyświetlane i odtwarzane bezpośrednio w aplikacji.** To jest podstawowe założenie produktu.
+**Media files (photos, videos) must be displayed and played directly within the app.** This is a core product requirement.
 
-### Miniatury
+### Thumbnails
 
-| Platforma | Źródło miniatur | Trwały cache |
-|-----------|----------------|--------------|
-| **Web (przeglądarka)** | Relay → GlusterFS | Pamięć przeglądarki (HTTP cache) |
-| **Android / iOS** | Relay → GlusterFS | Lokalna pamięć urządzenia (TODO) |
-| **Desktop** | Relay → GlusterFS | Lokalna pamięć urządzenia (TODO) |
+| Platform | Thumbnail source | Persistent cache |
+|----------|-----------------|-----------------|
+| **Web (browser)** | Relay → GlusterFS | Browser HTTP cache |
+| **Android / iOS** | Relay → GlusterFS | Local device storage (TODO) |
+| **Desktop** | Relay → GlusterFS | Local device storage (TODO) |
 
-**Aktualnie**: miniatury są pobierane z relay przez `GET /files/{id}` (pełny plik). Relay przechowuje je na GlusterFS.
+**Current**: thumbnails are fetched from relay via `GET /files/{id}` (full file). Relay stores them on GlusterFS.
 
-**TODO relay**: dodać endpoint `GET /files/{id}/thumbnail` zwracający mały JPEG (~200×200px) z cache po stronie relay na GlusterFS. Aplikacja będzie go używać w widoku "Miniatury".
+**TODO relay**: add `GET /files/{id}/thumbnail` endpoint returning a small JPEG (~200×200px) cached on relay's GlusterFS. The app will use this in grid view.
 
-**TODO mobile/desktop**: cache miniatur lokalnie w app storage (`path_provider` + hive/sqlite). Unikamy re-pobierania przy ponownym otwarciu app.
+**TODO mobile/desktop**: cache thumbnails locally in app storage (`path_provider` + hive/sqlite) to avoid re-fetching on app reopen.
 
-### Wyświetlanie
+### View Modes
 
-Widok plików obsługuje trzy tryby:
-- **Lista** — skrócone nazwy, ikony pliku/obrazu/wideo
-- **Długie nazwy** — pełne nazwy (zawijające), bez obcinania
-- **Miniatury** — siatka 160×160px; obrazy jako `Image.network`, wideo/inne jako ikona
+The file browser supports three modes:
+- **List** — truncated names, file/image/video icons
+- **Long names** — full filenames (wrapping), no truncation
+- **Thumbnails** — 160×160px grid; images via `Image.network`, videos/others as icon
 
 ## Authentication
 

@@ -1,12 +1,12 @@
-# Deployment — Flutter Web na NETOL Docker Swarm
+# Deployment — Flutter Web on NETOL Docker Swarm
 
 **Author**: Dariusz Porczyński
-**Last Updated**: 2026-04-06
-**Status**: ✅ DZIAŁA — pipeline aktywny, app w Swarmie
+**Last Updated**: 2026-04-07
+**Status**: ✅ LIVE — pipeline active, app running on Swarm
 
 ---
 
-## Architektura Deploymentu
+## Deployment Architecture
 
 ```
 push → github.com/dudenest/dudenest (main)
@@ -28,8 +28,9 @@ push → github.com/dudenest/dudenest (main)
     │  Runner: node006.netol.io (Docker Swarm mgr) │
     │  1. docker login ghcr.io ($GITHUB_TOKEN)     │
     │  2. docker stack deploy dudenest-web         │
-    │     --with-registry-auth (fwd do workerów)   │
+    │     --with-registry-auth (forwarded to nodes)│
     │  3. docker service ps dudenest-web_web       │
+    │  4. Purge Cloudflare cache (CF_API_TOKEN)    │
     └─────────────────────────────────────────────┘
          │
          ▼
@@ -45,19 +46,23 @@ push → github.com/dudenest/dudenest (main)
 
 ---
 
-## Komponenty
+## Components
 
 ### Dockerfile (`/Dockerfile`)
-Dwuetapowy build — Flutter web + nginx:
+Single-stage build — copies pre-built Flutter web into nginx:
 ```dockerfile
 FROM nginx:alpine
-COPY build/web /usr/share/nginx/html      # pre-built przez CI
+COPY build/web /usr/share/nginx/html      # pre-built by CI
 COPY docker/web/nginx.conf /etc/nginx/conf.d/default.conf
 ```
 
 ### nginx.conf (`/docker/web/nginx.conf`)
-SPA routing — wszystkie ścieżki → `index.html`:
+SPA routing — all paths fall back to `index.html`. Non-hashed files (main.dart.js, index.html) served with `no-store` to bypass CDN cache:
 ```nginx
+location ~* ^/(index\.html|main\.dart\.js|...)$ {
+    add_header Cache-Control "no-store, no-cache, must-revalidate";
+    add_header Cloudflare-CDN-Cache-Control "no-store";
+}
 location / { try_files $uri $uri/ /index.html; }
 ```
 
@@ -75,20 +80,26 @@ services:
 
 ---
 
-## Infrastruktura
+## Infrastructure
 
 ### GitHub Actions Runner
 - **Image**: `myoung34/github-runner:latest`
-- **Scope**: org `dudenest` (wszystkie repo)
+- **Scope**: org `dudenest` (all repos)
 - **Label**: `netol-swarm`
-- **Lokalizacja**: Docker Swarm service `github-runner_runner`
-- **Aktualny node**: node006.netol.io
+- **Location**: Docker Swarm service `github-runner_runner`
+- **Current node**: node006.netol.io
 - **Stack**: `/.data/github-runner/` (node001)
 
 ### GHCR (GitHub Container Registry)
 - **Image**: `ghcr.io/dudenest/dudenest`
-- **Tags**: `latest` + `<git-sha>` przy każdym pushu
-- **Auth**: `GITHUB_TOKEN` (wbudowany, automatyczny)
+- **Tags**: `latest` + `<git-sha>` on every push
+- **Auth**: `GITHUB_TOKEN` (built-in, automatic)
+
+### Cloudflare CDN
+- **Domain**: `app.dudenest.com` (proxied, orange cloud)
+- **Cache**: `Cloudflare-CDN-Cache-Control: no-store` for non-hashed JS files
+- **Post-deploy purge**: automated via `CF_API_TOKEN` + `CF_ZONE_ID` secrets
+- **Browser Cache TTL**: set to "Respect Existing Headers" in Cloudflare dashboard
 
 ### HAProxy (ns2, 206.189.31.117)
 - **Domain**: `app.dudenest.com`
@@ -99,42 +110,45 @@ services:
 
 ---
 
-## Aktualizacja aplikacji
+## Updating the Application
 
-Każdy push do `main` → automatyczny deploy:
+Every push to `main` triggers an automatic deploy:
 ```bash
 git push origin main
-# Pipeline: ~5 min build + ~30s deploy
-# Sprawdź: github.com/dudenest/dudenest/actions
+# Pipeline: ~5 min build + ~30s deploy + Cloudflare cache purge
+# Check: github.com/dudenest/dudenest/actions
 ```
 
 ---
 
-## Diagnostyka
+## Diagnostics
 
 ```bash
-# Stan service w Swarmie
-ssh -J root@10.51.1.101 root@10.51.1.221 \
+# Swarm service state
+ssh root@node001.netol.io \
   "docker service ps dudenest-web_web --no-trunc"
 
-# Logi service
-ssh -J root@10.51.1.101 root@10.51.1.221 \
+# Service logs
+ssh root@node001.netol.io \
   "docker service logs dudenest-web_web --tail 50"
 
-# Status GitHub runner
+# GitHub runner status
 curl -s -H "Authorization: token <PAT>" \
   https://api.github.com/orgs/dudenest/actions/runners | jq '.runners[].status'
+
+# Verify Cloudflare is bypassed
+curl -sI https://app.dudenest.com/main.dart.js | grep -E "cf-cache-status|cache-control|age"
 ```
 
 ---
 
-## Dev (lokalne uruchamianie)
+## Local Development
 
 ```bash
-# Wymagania: Flutter 3.41.6 (brew install flutter), SSH tunnel do relay-poc
+# Requirements: Flutter 3.41.6 (brew install flutter), SSH tunnel to relay-poc
 ssh -f -N -L 8086:192.168.0.119:8086 root@10.51.1.101
 
-# Uruchomienie
+# Run
 cd ~/Architect/github.com/dudenest/dudenest
 flutter run -d chrome --web-port 8787
 # App: http://localhost:8787
