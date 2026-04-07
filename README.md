@@ -1,6 +1,6 @@
 # Dudenest
 
-![Status](https://img.shields.io/badge/Status-Pre--Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
+![Version](https://img.shields.io/badge/Version-v0.2.0-blue) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![Last Update](https://img.shields.io/badge/Update-2026--04--07-lightgrey)
 
 **Your files. Your blocks. Your cloud.**
 
