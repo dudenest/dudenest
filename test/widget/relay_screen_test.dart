@@ -39,4 +39,42 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Error:'), findsOneWidget);
   });
+
+  testWidgets('delete button shows confirmation dialog', (tester) async {
+    final relay = _relay((_) async => http.Response(
+        jsonEncode({'files': [
+          {'file_id': 'abcdef1234567890', 'name': 'photo.jpg', 'size': 1024}
+        ]}), 200, headers: {'content-type': 'application/json'}));
+    await tester.pumpWidget(_wrap(RelayScreen(relay: relay)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.delete));
+    await tester.pumpAndSettle();
+    expect(find.text('Usuń plik'), findsOneWidget);
+    expect(find.text('Anuluj'), findsOneWidget);
+    expect(find.text('Usuń'), findsOneWidget);
+  });
+
+  testWidgets('cancel delete does not remove file', (tester) async {
+    final relay = _relay((_) async => http.Response(
+        jsonEncode({'files': [
+          {'file_id': 'abcdef1234567890', 'name': 'photo.jpg', 'size': 1024}
+        ]}), 200, headers: {'content-type': 'application/json'}));
+    await tester.pumpWidget(_wrap(RelayScreen(relay: relay)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.delete));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Anuluj'));
+    await tester.pumpAndSettle();
+    expect(find.text('photo.jpg'), findsOneWidget); // file still visible
+  });
+
+  testWidgets('view mode icons are displayed', (tester) async {
+    final relay = _relay((_) async => http.Response(
+        jsonEncode({'files': []}), 200, headers: {'content-type': 'application/json'}));
+    await tester.pumpWidget(_wrap(RelayScreen(relay: relay)));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.list), findsOneWidget);
+    expect(find.byIcon(Icons.text_snippet), findsOneWidget);
+    expect(find.byIcon(Icons.grid_view), findsOneWidget);
+  });
 }

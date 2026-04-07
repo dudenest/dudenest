@@ -76,6 +76,31 @@ ssh -L 8086:192.168.0.119:8086 root@10.51.1.101
 # For local testing, change _relayUrl in lib/main.dart to http://localhost:8086
 ```
 
+## Media Playback
+
+**Pliki multimedialne (zdjęcia, wideo) muszą być wyświetlane i odtwarzane bezpośrednio w aplikacji.** To jest podstawowe założenie produktu.
+
+### Miniatury
+
+| Platforma | Źródło miniatur | Trwały cache |
+|-----------|----------------|--------------|
+| **Web (przeglądarka)** | Relay → GlusterFS | Pamięć przeglądarki (HTTP cache) |
+| **Android / iOS** | Relay → GlusterFS | Lokalna pamięć urządzenia (TODO) |
+| **Desktop** | Relay → GlusterFS | Lokalna pamięć urządzenia (TODO) |
+
+**Aktualnie**: miniatury są pobierane z relay przez `GET /files/{id}` (pełny plik). Relay przechowuje je na GlusterFS.
+
+**TODO relay**: dodać endpoint `GET /files/{id}/thumbnail` zwracający mały JPEG (~200×200px) z cache po stronie relay na GlusterFS. Aplikacja będzie go używać w widoku "Miniatury".
+
+**TODO mobile/desktop**: cache miniatur lokalnie w app storage (`path_provider` + hive/sqlite). Unikamy re-pobierania przy ponownym otwarciu app.
+
+### Wyświetlanie
+
+Widok plików obsługuje trzy tryby:
+- **Lista** — skrócone nazwy, ikony pliku/obrazu/wideo
+- **Długie nazwy** — pełne nazwy (zawijające), bez obcinania
+- **Miniatury** — siatka 160×160px; obrazy jako `Image.network`, wideo/inne jako ikona
+
 ## Authentication
 
 Users authenticate via OAuth2 (Google, GitHub, Apple). The flow:

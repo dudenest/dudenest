@@ -131,6 +131,15 @@ class SettingsScreen extends StatelessWidget {
             MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay)),
           ),
         ),
+        const Divider(),
+        const ListTile(
+          leading: Icon(Icons.info_outline),
+          title: Text('Wersja'),
+          trailing: Text(
+            String.fromEnvironment('APP_VERSION', defaultValue: 'dev'),
+            style: TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+        ),
       ]),
     );
   }
