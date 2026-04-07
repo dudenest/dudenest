@@ -118,7 +118,7 @@ class _RelayScreenState extends State<RelayScreen> {
         },
         onLongPress: () => _confirmDelete(id, name),
         child: isImg
-            ? Image.network('${widget.relay.baseUrl}/files/$id', fit: BoxFit.cover,
+            ? Image.network('${widget.relay.baseUrl}/files/$id/thumbnail', fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0D1117),
                     child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040)))),
                 loadingBuilder: (_, child, p) => p == null ? child
