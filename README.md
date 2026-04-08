@@ -1,6 +1,6 @@
 # Dudenest
 
-![Version](https://img.shields.io/badge/Version-v0.2.0-blue) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![Last Update](https://img.shields.io/badge/Update-2026--04--07-lightgrey)
+![Version](https://img.shields.io/badge/Version-v0.3.0-blue) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![Last Update](https://img.shields.io/badge/Update-2026--04--08-lightgrey)
 
 **Your files. Your blocks. Your cloud.**
 
@@ -84,15 +84,11 @@ ssh -L 8086:192.168.0.119:8086 root@10.51.1.101
 
 | Platform | Thumbnail source | Persistent cache |
 |----------|-----------------|-----------------|
-| **Web (browser)** | Relay → GlusterFS | Browser HTTP cache |
-| **Android / iOS** | Relay → GlusterFS | Local device storage (TODO) |
-| **Desktop** | Relay → GlusterFS | Local device storage (TODO) |
+| **Web (browser)** | `GET /files/{id}/thumbnail` | Browser HTTP cache |
+| **Android / iOS** | `GET /files/{id}/thumbnail` | Local device storage (TODO) |
+| **Desktop** | `GET /files/{id}/thumbnail` | Local device storage (TODO) |
 
-**Current**: thumbnails are fetched from relay via `GET /files/{id}` (full file). Relay stores them on GlusterFS.
-
-**TODO relay**: add `GET /files/{id}/thumbnail` endpoint returning a small JPEG (~200×200px) cached on relay's GlusterFS. The app will use this in grid view.
-
-**TODO mobile/desktop**: cache thumbnails locally in app storage (`path_provider` + hive/sqlite) to avoid re-fetching on app reopen.
+Relay generates 200×200 JPEG thumbnails on upload and caches them at `~/.config/dudenest/thumbnails/`.
 
 ### View Modes
 
@@ -140,6 +136,30 @@ test/
     ├── accounts_screen_test.dart # Accounts list states
     └── relay_screen_test.dart    # File browser
 ```
+
+## Changelog
+
+### v0.3.0 — 2026-04-08 — OAuth E2E + Cloud Accounts
+- 🔐 **OAuth E2E fixed**: `web/auth` callback now uses localStorage (flutter_web_auth_2 v4 new-tab flow)
+- 🔐 **Fixed web/auth MIME**: nginx served file as `application/octet-stream` (download) → now HTML
+- 📱 **Method E**: In-app WebView with JS auto-fill for Google OAuth (Android/iOS/desktop)
+- ☁️ **Multi-account support**: add and manage multiple Google Drive accounts
+- 📊 **Storage stats**: used/total GB bar in Cloud Accounts screen + badge in Files AppBar
+- 🔗 **Social links**: GitHub + Discord icons in login footer; Community section in Settings
+- 🎨 **Brand icons**: `font_awesome_flutter` — GitHub, Discord, YouTube, Facebook, X
+
+### v0.2.1 — 2026-04-07 — Thumbnails + Key Management
+- 🖼️ Thumbnails: `GET /files/{id}/thumbnail` — lazy-generated 200×200 JPEG, GlusterFS cache
+- 🔑 BIP39 mnemonic key management: `relay setup` (generate) + `relay recover` (re-derive)
+- 📧 Email via Resend.com: relay sends encryption key mnemonic to owner on setup
+- 🔧 `relay.service` systemd unit on relay-poc VM
+
+### v0.2.0 — 2026-04-07 — OAuth & UI Milestone
+- 🔐 Google OAuth2 login (end-to-end)
+- 🔐 GitHub OAuth2 login
+- 🌟 Animated starfield login background
+- 🗂️ Files: grid/list/long-names view modes, fullscreen viewer with pinch-to-zoom
+- ☁️ Cloud Accounts: step-by-step add flow (browser screenshot + field fill)
 
 ## Contributing
 
