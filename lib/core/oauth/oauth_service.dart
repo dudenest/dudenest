@@ -10,8 +10,9 @@ import '../network/relay_client.dart';
 /// Web: page within the Flutter web app (requires callbackUrl registered in Google Cloud Console)
 const _callbackScheme = 'com.dudenest.app';
 const _mobileCallbackUrl = '$_callbackScheme://oauth/callback';
-// Web: app.dudenest.com/auth (flutter_web_auth_2 web callback page — see web/callback.html)
-const _webCallbackUrl = 'https://app.dudenest.com/auth';
+// Web: dudenest.com/auth (flutter_web_auth_2 web callback page — see web/auth)
+// Must match the origin where Flutter web runs (dudenest.com is the main domain).
+const _webCallbackUrl = 'https://dudenest.com/auth';
 
 /// Returns the platform-appropriate redirect URI for OAuth.
 String get oauthCallbackUrl => kIsWeb ? _webCallbackUrl : _mobileCallbackUrl;
