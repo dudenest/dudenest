@@ -23,7 +23,7 @@ class _RelayScreenState extends State<RelayScreen> {
   final Set<String> _selected = {};
   bool get _selectionMode => _selected.isNotEmpty;
 
-  static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif','svg'};
+  static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif'};  // svg excluded: no native decode in Flutter web
   static const _videoExts = {'mp4','mov','avi','mkv','webm','m4v','3gp'};
 
   @override
@@ -137,6 +137,7 @@ class _RelayScreenState extends State<RelayScreen> {
 
   Widget _buildSelectionBar() {
     final scheme = Theme.of(context).colorScheme;
+    final fg = scheme.onSurfaceVariant;
     return Material(
       elevation: 4,
       color: scheme.surfaceContainerHighest,
@@ -146,17 +147,26 @@ class _RelayScreenState extends State<RelayScreen> {
           height: 56,
           child: Row(children: [
             const SizedBox(width: 16),
-            Text('${_selected.length} selected', style: const TextStyle(fontWeight: FontWeight.w500)),
+            Text('${_selected.length} selected',
+                style: TextStyle(fontWeight: FontWeight.w500, color: fg)),
             const Spacer(),
-            IconButton(icon: const Icon(Icons.photo_album_outlined), tooltip: 'Add to album — coming soon', onPressed: null),
-            IconButton(icon: const Icon(Icons.share_outlined), tooltip: 'Share — coming soon', onPressed: null),
+            IconButton(
+              icon: Icon(Icons.photo_album_outlined, color: fg.withValues(alpha: 0.5)),
+              tooltip: 'Add to album — coming soon',
+              onPressed: null,
+            ),
+            IconButton(
+              icon: Icon(Icons.share_outlined, color: fg.withValues(alpha: 0.5)),
+              tooltip: 'Share — coming soon',
+              onPressed: null,
+            ),
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.red),
               tooltip: 'Delete selected',
               onPressed: _deleteSelected,
             ),
             IconButton(
-              icon: const Icon(Icons.close),
+              icon: Icon(Icons.close, color: fg),
               tooltip: 'Cancel selection',
               onPressed: () => setState(() => _selected.clear()),
             ),
