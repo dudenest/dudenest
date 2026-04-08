@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../../core/network/relay_client.dart';
 import '../../core/oauth/oauth_service.dart';
 
@@ -110,8 +112,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
 // ─── Add Account Sheet ────────────────────────────────────────────────────────
 
-enum _AddStep { selectProvider, selectMethod, oauthFlow, browserFlow, done }
-enum _AuthMethod { flutterOAuth, browserAuth }
+enum _AddStep { selectProvider, selectMethod, oauthFlow, browserFlow, webviewCredentials, webviewFlow, done }
+enum _AuthMethod { flutterOAuth, browserAuth, webviewOAuth }
 
 class _AddAccountSheet extends StatefulWidget {
   final RelayClient relay;
@@ -137,8 +139,16 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   String? _browserError;
   final _ctrl = TextEditingController();
 
+  // WebView Auth (Method E) state — in-app WebView with auto-fill
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  WebViewController? _webviewCtrl;
+  bool _webviewBusy = false;
+  String? _webviewError;
+
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() { _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); super.dispose(); }
 
   // ── Method A: Flutter-side OAuth (user's IP ✅) ──
 
@@ -201,11 +211,13 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
       builder: (_, scrollCtrl) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: switch (_step) {
-          _AddStep.selectProvider => _buildProviderSelect(scrollCtrl),
-          _AddStep.selectMethod   => _buildMethodSelect(scrollCtrl),
-          _AddStep.oauthFlow      => _buildOAuthFlow(scrollCtrl),
-          _AddStep.browserFlow    => _buildBrowserFlow(scrollCtrl),
-          _AddStep.done           => _buildDone(),
+          _AddStep.selectProvider      => _buildProviderSelect(scrollCtrl),
+          _AddStep.selectMethod        => _buildMethodSelect(scrollCtrl),
+          _AddStep.oauthFlow           => _buildOAuthFlow(scrollCtrl),
+          _AddStep.browserFlow         => _buildBrowserFlow(scrollCtrl),
+          _AddStep.webviewCredentials  => _buildWebViewCredentials(scrollCtrl),
+          _AddStep.webviewFlow         => _buildWebViewFlow(),
+          _AddStep.done                => _buildDone(),
         },
       ),
     );
@@ -266,6 +278,17 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
         ),
       ),
       const SizedBox(height: 12),
+      // Method E — in-app WebView auto-fill (native only, user's IP ✅)
+      if (!kIsWeb) Card(
+        child: ListTile(
+          leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.auto_fix_high, color: Colors.white)),
+          title: const Text('Auto-fill in app'),
+          subtitle: const Text('Enter email & password · Your IP · No browser switch'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => setState(() { _method = _AuthMethod.webviewOAuth; _step = _AddStep.webviewCredentials; }),
+        ),
+      ),
+      if (!kIsWeb) const SizedBox(height: 12),
       // Method B — self-hosted only
       Card(
         child: ListTile(
@@ -384,6 +407,127 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
       ],
     );
   }
+
+  // ── Method E: WebView auto-fill ──
+
+  // Step 3E-1: Credentials form (email/password/phone)
+  Widget _buildWebViewCredentials(ScrollController sc) => ListView(
+    controller: sc,
+    padding: const EdgeInsets.all(24),
+    children: [
+      Row(children: [
+        IconButton(icon: const Icon(Icons.arrow_back_ios_new), padding: EdgeInsets.zero,
+            onPressed: () => setState(() => _step = _AddStep.selectMethod)),
+        const SizedBox(width: 8),
+        const Text('Enter Credentials', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+      ]),
+      const SizedBox(height: 8),
+      const Text('Your credentials are used only to auto-fill the Google login page. They are never sent to the relay.',
+          style: TextStyle(color: Colors.grey, fontSize: 12)),
+      const SizedBox(height: 20),
+      TextField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder(), prefixIcon: Icon(Icons.email))),
+      const SizedBox(height: 12),
+      TextField(controller: _passwordCtrl, obscureText: true,
+          decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder(), prefixIcon: Icon(Icons.lock))),
+      const SizedBox(height: 12),
+      TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(labelText: 'Phone (for 2FA, optional)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.phone))),
+      const SizedBox(height: 20),
+      if (_webviewError != null) ...[
+        Text(_webviewError!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+      ],
+      ElevatedButton.icon(
+        icon: _webviewBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login),
+        label: const Text('Continue'),
+        onPressed: _webviewBusy || _emailCtrl.text.isEmpty ? null : _startWebViewAuth,
+      ),
+    ],
+  );
+
+  Future<void> _startWebViewAuth() async {
+    setState(() { _webviewBusy = true; _webviewError = null; });
+    try {
+      final callback = 'com.dudenest.app://oauth/callback'; // native: custom scheme intercepted by webview
+      final urlData = await widget.relay.getAuthUrl(_selectedProvider, callback);
+      final authUrl = urlData['url'] as String;
+      final ctrl = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setNavigationDelegate(NavigationDelegate(
+          onPageFinished: (url) => _webviewAutoFill(url),
+          onNavigationRequest: (req) {
+            if (req.url.startsWith('com.dudenest.app://oauth/callback')) {
+              _handleWebViewCallback(req.url);
+              return NavigationDecision.prevent; // relay handles token exchange
+            }
+            return NavigationDecision.navigate;
+          },
+        ))
+        ..loadRequest(Uri.parse(authUrl));
+      setState(() { _webviewCtrl = ctrl; _step = _AddStep.webviewFlow; _webviewBusy = false; });
+    } catch (e) {
+      setState(() { _webviewError = e.toString(); _webviewBusy = false; });
+    }
+  }
+
+  // Auto-fill credentials via JS injection when Google pages load
+  void _webviewAutoFill(String url) async {
+    final ctrl = _webviewCtrl;
+    if (ctrl == null) return;
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    final phone = _phoneCtrl.text.trim();
+    await Future.delayed(const Duration(milliseconds: 600)); // wait for page render
+    if (url.contains('accounts.google.com') && url.contains('identifier')) {
+      // Email step
+      await ctrl.runJavaScript(
+        "var e=document.querySelector('input[type=email]'); if(e){e.value='${email.replaceAll("'", "\\'")}';e.dispatchEvent(new Event('input',{bubbles:true}));}");
+      await Future.delayed(const Duration(milliseconds: 400));
+      await ctrl.runJavaScript(
+        "var b=document.querySelector('#identifierNext button,button[jsname=LgbsSe]'); if(b)b.click();");
+    } else if (url.contains('accounts.google.com') && url.contains('challenge/pwd')) {
+      // Password step
+      await ctrl.runJavaScript(
+        "var p=document.querySelector('input[type=password]'); if(p){p.value='${password.replaceAll("'", "\\'")}';p.dispatchEvent(new Event('input',{bubbles:true}));}");
+      await Future.delayed(const Duration(milliseconds: 400));
+      await ctrl.runJavaScript(
+        "var b=document.querySelector('#passwordNext button,button[jsname=LgbsSe]'); if(b)b.click();");
+    } else if (url.contains('accounts.google.com') && (url.contains('challenge') || url.contains('totp') || url.contains('phone'))) {
+      // 2FA step — phone number if available
+      if (phone.isNotEmpty) {
+        await ctrl.runJavaScript(
+          "var p=document.querySelector('input[type=tel],input[name=phoneNumber]'); if(p){p.value='${phone.replaceAll("'", "\\'")}';p.dispatchEvent(new Event('input',{bubbles:true}));}");
+        await Future.delayed(const Duration(milliseconds: 400));
+        await ctrl.runJavaScript("var b=document.querySelector('button[jsname=LgbsSe],#idvPreregisteredPhoneNext button'); if(b)b.click();");
+      }
+    }
+  }
+
+  Future<void> _handleWebViewCallback(String callbackUrl) async {
+    final code = Uri.parse(callbackUrl).queryParameters['code'] ?? '';
+    if (code.isEmpty) { setState(() { _webviewError = 'No code in callback'; _step = _AddStep.webviewCredentials; }); return; }
+    setState(() { _webviewBusy = true; });
+    try {
+      final data = await widget.relay.exchangeOAuthCode(_selectedProvider, code, 'com.dudenest.app://oauth/callback');
+      final email = data['email'] as String? ?? 'unknown';
+      setState(() { _oauthEmail = email; _step = _AddStep.done; _webviewBusy = false; });
+    } catch (e) {
+      setState(() { _webviewError = e.toString(); _step = _AddStep.webviewCredentials; _webviewBusy = false; });
+    }
+  }
+
+  // Step 3E-2: WebView shown to user (handles 2FA prompts, consent screen)
+  Widget _buildWebViewFlow() => Column(children: [
+    AppBar(
+      leading: IconButton(icon: const Icon(Icons.close),
+          onPressed: () => setState(() { _webviewCtrl = null; _step = _AddStep.webviewCredentials; })),
+      title: const Text('Sign in to Google'),
+      actions: [if (_webviewBusy) const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))],
+    ),
+    if (_webviewCtrl != null) Expanded(child: WebViewWidget(controller: _webviewCtrl!))
+    else const Expanded(child: Center(child: CircularProgressIndicator())),
+  ]);
 
   // Step 4: Done
   Widget _buildDone() => Center(

@@ -4,8 +4,9 @@
 <body>
 <p>Authentication complete. This window will close automatically.</p>
 <script>
-  // flutter_web_auth_2 callback page — posts result back to main Flutter web app window.
-  // Google redirects here after OAuth consent: https://app.dudenest.com/auth?code=xxx
+  // flutter_web_auth_2 callback page — posts OAuth result back to Flutter web app.
+  // Google redirects here after consent: https://dudenest.com/auth?code=xxx
+  // postMessage targetOrigin = window.location.origin = https://dudenest.com (same as app).
   (function() {
     var href = window.location.href;
     if (window.opener) {

@@ -14,6 +14,7 @@ dependencies:
   shared_preferences: ^2.3.0
   web: ^1.1.0
   flutter_web_auth_2: ^4.0.0   # OAuth in system browser (user's IP ✅) — Android/iOS/macOS/Desktop
+  webview_flutter: ^4.0.0      # In-app WebView with JS auto-fill (Method E) — Android/iOS/macOS/Desktop only
   web_socket_channel: ^3.0.0   # WebSocket client for relay↔Flutter communication
   url_launcher: ^6.3.0         # Open URLs in system browser (fallback / web platform)
 
