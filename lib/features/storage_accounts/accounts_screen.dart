@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -157,6 +158,8 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   String? _browserError;
   String? _vncUrl; // set when relay returns vnc_ready — enables noVNC waiting UI
   WebSocketChannel? _wsChannel; // listens for auth_done from relay
+  Timer? _pollTimer; // polling fallback — checks /providers every 3s in case WS misses auth_done
+  int _pollProviderCount = 0; // snapshot of provider count before auth started
   final _ctrl = TextEditingController();
 
   // WebView Auth (Method E) state — in-app WebView with auto-fill
@@ -168,7 +171,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   String? _webviewError;
 
   @override
-  void dispose() { _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); super.dispose(); }
+  void dispose() { _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); _pollTimer?.cancel(); super.dispose(); }
 
   // ── Method A: Flutter-side OAuth (user's IP ✅) ──
 
@@ -188,6 +191,9 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   Future<void> _startBrowserSession() async {
     setState(() { _browserBusy = true; _browserError = null; });
     try {
+      // Snapshot current provider count before auth — polling fallback uses this to detect new provider
+      final beforeProviders = await widget.relay.getProviders().catchError((_) => <Map<String, dynamic>>[]);
+      _pollProviderCount = beforeProviders.length;
       final step = await widget.relay.startAuthSession(_selectedProvider);
       final status = step['status'] as String?;
       final sid = step['session_id'] as String?;
@@ -196,7 +202,8 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
         final vnc = step['vnc_url'] as String?;
         setState(() { _sessionId = sid; _vncUrl = vnc; _step = _AddStep.browserFlow; _browserBusy = false; });
         if (vnc != null) await launchUrl(Uri.parse(vnc), mode: LaunchMode.externalApplication);
-        _listenForAuthDone(); // connect WebSocket, wait for auth_done from relay
+        _listenForAuthDone(); // WebSocket primary path
+        _startPollingFallback(); // polling fallback in case WS auth_done is missed
       } else {
         // Legacy screenshot+input flow (relay without noVNC support)
         setState(() { _sessionId = sid; _currentStep = step; _step = _AddStep.browserFlow; _browserBusy = false; });
@@ -216,9 +223,28 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
           final email = data['email'] as String?;
           if (mounted) setState(() { _oauthEmail = email; _step = _AddStep.done; });
           _wsChannel?.sink.close();
+          _pollTimer?.cancel();
         }
       } catch (_) {}
     }, onError: (_) {}, onDone: () {});
+  }
+
+  // Polling fallback: checks /providers every 3s; if provider count increases → auth done
+  void _startPollingFallback() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (_step == _AddStep.done) { _pollTimer?.cancel(); return; }
+      try {
+        final providers = await widget.relay.getProviders();
+        if (providers.length > _pollProviderCount) {
+          final newProvider = providers.last; // most recently added
+          final email = newProvider['email'] as String?;
+          if (mounted) setState(() { _oauthEmail = email; _step = _AddStep.done; });
+          _pollTimer?.cancel();
+          _wsChannel?.sink.close();
+        }
+      } catch (_) {}
+    });
   }
 
   Future<void> _submitBrowserField() async {
