@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/network/relay_client.dart';
 import '../../core/oauth/oauth_service.dart';
 
@@ -148,11 +150,13 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   String? _oauthEmail;
   String? _oauthError;
 
-  // Browser Auth (Method B) state — chromedp
+  // Browser Auth (Method B) state — chromedp / noVNC
   String? _sessionId;
   Map<String, dynamic>? _currentStep;
   bool _browserBusy = false;
   String? _browserError;
+  String? _vncUrl; // set when relay returns vnc_ready — enables noVNC waiting UI
+  WebSocketChannel? _wsChannel; // listens for auth_done from relay
   final _ctrl = TextEditingController();
 
   // WebView Auth (Method E) state — in-app WebView with auto-fill
@@ -164,7 +168,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   String? _webviewError;
 
   @override
-  void dispose() { _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); super.dispose(); }
+  void dispose() { _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); super.dispose(); }
 
   // ── Method A: Flutter-side OAuth (user's IP ✅) ──
 
@@ -179,21 +183,42 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
     }
   }
 
-  // ── Method B: Browser Auth (chromedp on relay) ──
+  // ── Method B: Browser Auth — noVNC (relay opens Chromium, user interacts via VNC in browser) ──
 
   Future<void> _startBrowserSession() async {
     setState(() { _browserBusy = true; _browserError = null; });
     try {
       final step = await widget.relay.startAuthSession(_selectedProvider);
-      setState(() {
-        _sessionId = step['session_id'] as String?;
-        _currentStep = step;
-        _step = _AddStep.browserFlow;
-        _browserBusy = false;
-      });
+      final status = step['status'] as String?;
+      final sid = step['session_id'] as String?;
+      if (status == 'vnc_ready') {
+        // noVNC flow: relay opened Chromium on :99, return vnc_url for user to interact
+        final vnc = step['vnc_url'] as String?;
+        setState(() { _sessionId = sid; _vncUrl = vnc; _step = _AddStep.browserFlow; _browserBusy = false; });
+        if (vnc != null) await launchUrl(Uri.parse(vnc), mode: LaunchMode.externalApplication);
+        _listenForAuthDone(); // connect WebSocket, wait for auth_done from relay
+      } else {
+        // Legacy screenshot+input flow (relay without noVNC support)
+        setState(() { _sessionId = sid; _currentStep = step; _step = _AddStep.browserFlow; _browserBusy = false; });
+      }
     } catch (e) {
       setState(() { _browserError = e.toString(); _browserBusy = false; });
     }
+  }
+
+  void _listenForAuthDone() {
+    _wsChannel?.sink.close();
+    _wsChannel = WebSocketChannel.connect(Uri.parse(widget.relay.wsUrl));
+    _wsChannel!.stream.listen((msg) {
+      try {
+        final data = jsonDecode(msg.toString()) as Map<String, dynamic>;
+        if (data['type'] == 'auth_done') {
+          final email = data['email'] as String?;
+          if (mounted) setState(() { _oauthEmail = email; _step = _AddStep.done; });
+          _wsChannel?.sink.close();
+        }
+      } catch (_) {}
+    }, onError: (_) {}, onDone: () {});
   }
 
   Future<void> _submitBrowserField() async {
@@ -360,8 +385,10 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
     ],
   );
 
-  // Step 3B: Browser Auth (chromedp) — screenshot + field fill
+  // Step 3B: Browser Auth — noVNC waiting UI or legacy screenshot+input
   Widget _buildBrowserFlow(ScrollController sc) {
+    if (_vncUrl != null) return _buildVNCWaitingFlow(sc); // noVNC flow: VNC opened in browser tab
+    // Legacy screenshot+input flow (relay without noVNC)
     final stepData = _currentStep ?? {};
     final fields = (stepData['fields'] as List? ?? []).cast<Map<String, dynamic>>();
     final screenshotB64 = stepData['screenshot_b64'] as String?;
@@ -423,6 +450,39 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
       ],
     );
   }
+
+  // noVNC waiting UI — shown while user authenticates in the opened browser tab
+  Widget _buildVNCWaitingFlow(ScrollController sc) => ListView(
+    controller: sc,
+    padding: const EdgeInsets.all(32),
+    children: [
+      Row(children: [
+        IconButton(icon: const Icon(Icons.arrow_back_ios_new), padding: EdgeInsets.zero,
+            onPressed: () { widget.relay.authClose(_sessionId ?? ''); _wsChannel?.sink.close(); Navigator.pop(context); }),
+        const SizedBox(width: 8),
+        const Text('Browser Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      ]),
+      const SizedBox(height: 32),
+      const Icon(Icons.computer, size: 64, color: Colors.blue),
+      const SizedBox(height: 24),
+      const Text('Google authentication in progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+      const SizedBox(height: 8),
+      const Text('A Google login page has been opened in your browser.\nSign in to complete the process.\n\nThe app will automatically update when done.',
+          textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+      const SizedBox(height: 32),
+      const Center(child: CircularProgressIndicator()),
+      const SizedBox(height: 24),
+      if (_browserError != null) ...[
+        Text(_browserError!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+        const SizedBox(height: 16),
+      ],
+      OutlinedButton.icon(
+        icon: const Icon(Icons.open_in_new),
+        label: const Text('Re-open login tab'),
+        onPressed: _vncUrl != null ? () => launchUrl(Uri.parse(_vncUrl!), mode: LaunchMode.externalApplication) : null,
+      ),
+    ],
+  );
 
   // ── Method E: WebView auto-fill ──
 

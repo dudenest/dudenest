@@ -7,6 +7,9 @@ class RelayClient {
   final http.Client _http;
   RelayClient(this.baseUrl, {http.Client? client}) : _http = client ?? http.Client();
 
+  // WebSocket URL: ws://host:port/ws (or wss:// for https relay)
+  String get wsUrl => baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://') + '/ws';
+
   // GET /providers — returns list of authenticated cloud accounts
   Future<List<Map<String, dynamic>>> getProviders() async {
     final resp = await _http.get(Uri.parse('$baseUrl/providers'));
