@@ -18,6 +18,8 @@ class _RelayScreenState extends State<RelayScreen> {
   _ViewMode _viewMode = _ViewMode.grid;
   double? _storageUsedGb;
   double? _storageTotalGb;
+  final Set<String> _selected = {};
+  bool get _selectionMode => _selected.isNotEmpty;
 
   static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif','svg'};
   static const _videoExts = {'mp4','mov','avi','mkv','webm','m4v','3gp'};
@@ -26,7 +28,7 @@ class _RelayScreenState extends State<RelayScreen> {
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() { _loading = true; _error = null; _selected.clear(); });
     try {
       final files = await widget.relay.listFiles();
       setState(() { _files = files; _loading = false; });
@@ -96,13 +98,106 @@ class _RelayScreenState extends State<RelayScreen> {
     IconButton(icon: const Icon(Icons.delete, color: Colors.red), tooltip: 'Delete', onPressed: () => _confirmDelete(id, name)),
   ]);
 
+  void _toggleSelect(String id) => setState(() {
+    if (_selected.contains(id)) _selected.remove(id); else _selected.add(id);
+  });
+
+  Future<void> _deleteSelected() async {
+    final count = _selected.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete files'),
+        content: Text('Delete $count file${count == 1 ? '' : 's'}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final ids = Set<String>.from(_selected);
+    setState(() => _selected.clear());
+    int failed = 0;
+    for (final id in ids) {
+      try { await widget.relay.deleteFile(id); } catch (_) { failed++; }
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(failed == 0
+          ? 'Deleted $count file${count == 1 ? '' : 's'}'
+          : '$failed of $count deletions failed'),
+      backgroundColor: failed == 0 ? Colors.green : Colors.red,
+    ));
+    _load();
+  }
+
+  Widget _buildSelectionBar() {
+    final scheme = Theme.of(context).colorScheme;
+    return BottomAppBar(
+      color: scheme.surfaceContainerHighest,
+      height: 56,
+      child: Row(children: [
+        const SizedBox(width: 16),
+        Text('${_selected.length} selected', style: const TextStyle(fontWeight: FontWeight.w500)),
+        const Spacer(),
+        IconButton(icon: const Icon(Icons.share_outlined), tooltip: 'Share — coming soon', onPressed: null),
+        IconButton(
+          icon: const Icon(Icons.delete_outline, color: Colors.red),
+          tooltip: 'Delete selected',
+          onPressed: _deleteSelected,
+        ),
+        IconButton(
+          icon: const Icon(Icons.close),
+          tooltip: 'Cancel selection',
+          onPressed: () => setState(() => _selected.clear()),
+        ),
+        const SizedBox(width: 4),
+      ]),
+    );
+  }
+
+  // Small leading thumbnail for list views (images: thumbnail; others: icon)
+  Widget _buildLeading(String name, String id) {
+    const sz = 44.0;
+    if (_isImage(name)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.network(
+          '${widget.relay.baseUrl}/files/$id/thumbnail',
+          width: sz, height: sz, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => SizedBox(width: sz, height: sz,
+              child: Center(child: Icon(_fileIcon(name)))),
+          loadingBuilder: (_, child, p) => p == null ? child
+              : const SizedBox(width: sz, height: sz,
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 1))),
+        ),
+      );
+    }
+    return SizedBox(width: sz, height: sz, child: Center(child: Icon(_fileIcon(name))));
+  }
+
+  // Opens file: fullscreen for images, download for others
+  void _openFile(BuildContext ctx, String id, String name) {
+    if (_isImage(name)) {
+      Navigator.push(ctx, MaterialPageRoute(
+        builder: (_) => _FullscreenViewer(
+          url: '${widget.relay.baseUrl}/files/$id',
+          name: name, relay: widget.relay, fileId: id,
+          onDelete: () { Navigator.pop(ctx); _load(); },
+        ),
+      ));
+    } else {
+      _download(id, name);
+    }
+  }
+
   // ─── Thumbnail grid: tiles flush, 1px separator line, no names ─────────────
   Widget _buildGrid() => GridView.builder(
     padding: EdgeInsets.zero,
     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: 3,
-      mainAxisSpacing: 1,
-      crossAxisSpacing: 1,
+      crossAxisCount: 3, mainAxisSpacing: 1, crossAxisSpacing: 1,
     ),
     itemCount: _files.length,
     itemBuilder: (ctx, i) {
@@ -110,31 +205,41 @@ class _RelayScreenState extends State<RelayScreen> {
       final id = f['file_id'] as String? ?? '';
       final name = f['name'] as String? ?? id;
       final isImg = _isImage(name);
+      final isSelected = _selected.contains(id);
       return GestureDetector(
-        onTap: () {
-          if (isImg) {
-            Navigator.push(ctx, MaterialPageRoute(
-              builder: (_) => _FullscreenViewer(
-                url: '${widget.relay.baseUrl}/files/$id',
-                name: name, relay: widget.relay, fileId: id,
-                onDelete: () { Navigator.pop(ctx); _load(); },
-              ),
-            ));
-          } else {
-            _download(id, name);
-          }
-        },
-        onLongPress: () => _confirmDelete(id, name),
-        child: isImg
-            ? Image.network('${widget.relay.baseUrl}/files/$id/thumbnail', fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0D1117),
-                    child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040)))),
-                loadingBuilder: (_, child, p) => p == null ? child
-                    : Container(color: const Color(0xFF0D1117),
-                        child: const Center(child: CircularProgressIndicator(strokeWidth: 1))),
-              )
-            : Container(color: const Color(0xFF111827),
-                child: Center(child: Icon(_fileIcon(name), size: 36, color: const Color(0xFF6080A0)))),
+        onTap: () => _selectionMode ? _toggleSelect(id) : _openFile(ctx, id, name),
+        onLongPress: () => _toggleSelect(id),  // enter selection mode
+        child: Stack(fit: StackFit.expand, children: [
+          // Content
+          isImg
+              ? Image.network('${widget.relay.baseUrl}/files/$id/thumbnail', fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0D1117),
+                      child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040)))),
+                  loadingBuilder: (_, child, p) => p == null ? child
+                      : Container(color: const Color(0xFF0D1117),
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 1))),
+                )
+              : Container(color: const Color(0xFF111827),
+                  child: Center(child: Icon(_fileIcon(name), size: 36, color: const Color(0xFF6080A0)))),
+          // Selection overlay (only in selection mode)
+          if (_selectionMode) AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            color: isSelected ? Colors.black54 : Colors.black26,
+            child: isSelected
+                ? const Center(child: Icon(Icons.check_circle, color: Colors.white, size: 36))
+                : Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: Align(alignment: Alignment.topRight,
+                      child: Container(width: 22, height: 22,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white70, width: 2),
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ]),
       );
     },
   );
@@ -146,11 +251,18 @@ class _RelayScreenState extends State<RelayScreen> {
       final f = _files[i];
       final id = f['file_id'] as String? ?? '';
       final name = f['name'] as String? ?? id;
+      final isSelected = _selected.contains(id);
       return ListTile(
-        leading: Icon(_fileIcon(name)),
+        selected: isSelected,
+        leading: _buildLeading(name, id),
         title: Text(name, overflow: TextOverflow.ellipsis),
         subtitle: Text('${_formatSize(f['size'])} · ${id.length >= 8 ? '${id.substring(0, 8)}...' : id}'),
-        trailing: _actionRow(id, name),
+        trailing: _selectionMode
+            ? Icon(isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isSelected ? Theme.of(ctx).colorScheme.primary : Colors.grey)
+            : _actionRow(id, name),
+        onTap: () => _selectionMode ? _toggleSelect(id) : _openFile(ctx, id, name),
+        onLongPress: () => _toggleSelect(id),
       );
     },
   );
@@ -162,12 +274,19 @@ class _RelayScreenState extends State<RelayScreen> {
       final f = _files[i];
       final id = f['file_id'] as String? ?? '';
       final name = f['name'] as String? ?? id;
+      final isSelected = _selected.contains(id);
       return ListTile(
-        leading: Icon(_fileIcon(name)),
+        selected: isSelected,
+        leading: _buildLeading(name, id),
         title: Text(name),
         subtitle: Text(_formatSize(f['size'])),
-        trailing: _actionRow(id, name),
         isThreeLine: name.length > 35,
+        trailing: _selectionMode
+            ? Icon(isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isSelected ? Theme.of(ctx).colorScheme.primary : Colors.grey)
+            : _actionRow(id, name),
+        onTap: () => _selectionMode ? _toggleSelect(id) : _openFile(ctx, id, name),
+        onLongPress: () => _toggleSelect(id),
       );
     },
   );
@@ -189,8 +308,18 @@ class _RelayScreenState extends State<RelayScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
+      bottomNavigationBar: _selectionMode ? _buildSelectionBar() : null,
       appBar: AppBar(
-        title: const Text('Files'),
+        title: _selectionMode
+            ? Text('${_selected.length} selected')
+            : const Text('Files'),
+        leading: _selectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Cancel selection',
+                onPressed: () => setState(() => _selected.clear()),
+              )
+            : null,
         actions: [
           if (_storageUsedGb != null && _storageTotalGb != null)
             Tooltip(message: 'Storage used across all accounts',
@@ -212,13 +341,21 @@ class _RelayScreenState extends State<RelayScreen> {
                   color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600)),
             ),
           ),
-          for (final mode in _ViewMode.values)
+          if (!_selectionMode) ...[
+            for (final mode in _ViewMode.values)
+              IconButton(
+                icon: Icon(_modeIcon(mode), color: _viewMode == mode ? scheme.primary : null),
+                tooltip: _modeLabel(mode),
+                onPressed: () => setState(() => _viewMode = mode),
+              ),
+            IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Refresh'),
+          ] else ...[
             IconButton(
-              icon: Icon(_modeIcon(mode), color: _viewMode == mode ? scheme.primary : null),
-              tooltip: _modeLabel(mode),
-              onPressed: () => setState(() => _viewMode = mode),
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              tooltip: 'Delete selected',
+              onPressed: _deleteSelected,
             ),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Refresh'),
+          ],
         ],
       ),
       body: _loading
