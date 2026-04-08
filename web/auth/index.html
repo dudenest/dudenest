@@ -9,11 +9,17 @@
   // postMessage targetOrigin = window.location.origin = https://dudenest.com (same as app).
   (function() {
     var href = window.location.href;
-    if (window.opener) {
+    if (window.opener) {  // popup scenario
       window.opener.postMessage({'flutter-web-auth-2': href}, window.location.origin);
       window.close();
-    } else if (window.parent !== window) {
+    } else if (window.parent !== window) {  // iframe scenario
       window.parent.postMessage({'flutter-web-auth-2': href}, window.location.origin);
+    } else {
+      // New tab scenario: opener cleared by Google COOP.
+      // flutter_web_auth_2 v4 polls localStorage — write result there.
+      localStorage.setItem('flutter-web-auth-2', href);
+      window.close();  // close if opened via window.open()
+      window.location.href = '/';  // fallback: navigate back to app
     }
   })();
 </script>
