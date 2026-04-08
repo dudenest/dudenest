@@ -63,13 +63,26 @@ class _AccountsScreenState extends State<AccountsScreen> {
                           final used = (p['quota_used_gb'] as num?)?.toStringAsFixed(1) ?? '?';
                           final total = (p['quota_total_gb'] as num?)?.toStringAsFixed(1) ?? '?';
                           final available = p['available'] == true;
+                          final errMsg = (p['last_error'] ?? p['error']) as String? ?? 'Token expired — tap to reconnect';
                           return ListTile(
                             leading: _providerIcon(p['type'] as String? ?? 'gdrive', available),
                             title: Text(p['email'] ?? p['id'] ?? 'Unknown'),
-                            subtitle: Text('${p['type'] ?? 'gdrive'} · $used GB / $total GB used'),
-                            trailing: available
-                                ? const Icon(Icons.check_circle, color: Colors.green)
-                                : const Icon(Icons.error, color: Colors.red),
+                            subtitle: available
+                                ? Text('${p['type'] ?? 'gdrive'} · $used GB / $total GB used')
+                                : Text(errMsg, style: const TextStyle(color: Colors.red, fontSize: 12), overflow: TextOverflow.ellipsis),
+                            trailing: Tooltip(
+                              message: available ? 'Connected' : 'Unavailable — tap to reconnect',
+                              child: available
+                                  ? const Icon(Icons.check_circle, color: Colors.green)
+                                  : const Icon(Icons.error, color: Colors.red),
+                            ),
+                            onTap: available ? null : () async {
+                              await showModalBottomSheet(
+                                context: context, isScrollControlled: true, useSafeArea: true,
+                                builder: (_) => _AddAccountSheet(relay: widget.relay),
+                              );
+                              _load();
+                            },
                           );
                         },
                       )),

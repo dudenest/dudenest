@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/network/relay_client.dart';
 import '../../core/auth/web_utils.dart';
+import '../storage_accounts/accounts_screen.dart';
 
 enum _ViewMode { grid, list, longNames }
 
@@ -135,26 +137,33 @@ class _RelayScreenState extends State<RelayScreen> {
 
   Widget _buildSelectionBar() {
     final scheme = Theme.of(context).colorScheme;
-    return BottomAppBar(
+    return Material(
+      elevation: 4,
       color: scheme.surfaceContainerHighest,
-      height: 56,
-      child: Row(children: [
-        const SizedBox(width: 16),
-        Text('${_selected.length} selected', style: const TextStyle(fontWeight: FontWeight.w500)),
-        const Spacer(),
-        IconButton(icon: const Icon(Icons.share_outlined), tooltip: 'Share — coming soon', onPressed: null),
-        IconButton(
-          icon: const Icon(Icons.delete_outline, color: Colors.red),
-          tooltip: 'Delete selected',
-          onPressed: _deleteSelected,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 56,
+          child: Row(children: [
+            const SizedBox(width: 16),
+            Text('${_selected.length} selected', style: const TextStyle(fontWeight: FontWeight.w500)),
+            const Spacer(),
+            IconButton(icon: const Icon(Icons.photo_album_outlined), tooltip: 'Add to album — coming soon', onPressed: null),
+            IconButton(icon: const Icon(Icons.share_outlined), tooltip: 'Share — coming soon', onPressed: null),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              tooltip: 'Delete selected',
+              onPressed: _deleteSelected,
+            ),
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Cancel selection',
+              onPressed: () => setState(() => _selected.clear()),
+            ),
+            const SizedBox(width: 4),
+          ]),
         ),
-        IconButton(
-          icon: const Icon(Icons.close),
-          tooltip: 'Cancel selection',
-          onPressed: () => setState(() => _selected.clear()),
-        ),
-        const SizedBox(width: 4),
-      ]),
+      ),
     );
   }
 
@@ -304,11 +313,21 @@ class _RelayScreenState extends State<RelayScreen> {
 
   static const _kVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
 
+  Widget _buildContent() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) return Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red)));
+    if (_files.isEmpty) return const Center(child: Text('No files yet. Upload something first.'));
+    return switch (_viewMode) {
+      _ViewMode.grid => _buildGrid(),
+      _ViewMode.list => _buildList(),
+      _ViewMode.longNames => _buildLongNames(),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      bottomNavigationBar: _selectionMode ? _buildSelectionBar() : null,
       appBar: AppBar(
         title: _selectionMode
             ? Text('${_selected.length} selected')
@@ -322,23 +341,33 @@ class _RelayScreenState extends State<RelayScreen> {
             : null,
         actions: [
           if (_storageUsedGb != null && _storageTotalGb != null)
-            Tooltip(message: 'Storage used across all accounts',
+            Tooltip(
+              message: 'Storage used — tap to manage accounts',
+              child: GestureDetector(
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => AccountsScreen(relay: widget.relay))),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(12)),
+                  child: Text('${_storageUsedGb!.toStringAsFixed(1)}/${_storageTotalGb!.toStringAsFixed(1)} GB',
+                      style: TextStyle(fontSize: 10, fontFamily: 'monospace',
+                          color: scheme.onSecondaryContainer, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ),
+          Tooltip(
+            message: 'App version — view on GitHub',
+            child: GestureDetector(
+              onTap: () => launchUrl(Uri.parse('https://github.com/dudenest/dudenest'),
+                  mode: LaunchMode.externalApplication),
               child: Container(
                 margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(12)),
-                child: Text('${_storageUsedGb!.toStringAsFixed(1)}/${_storageTotalGb!.toStringAsFixed(1)} GB',
-                    style: TextStyle(fontSize: 10, fontFamily: 'monospace',
-                        color: scheme.onSecondaryContainer, fontWeight: FontWeight.w600)),
+                decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
+                child: Text(_kVersion, style: TextStyle(fontSize: 10, fontFamily: 'monospace',
+                    color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600)),
               ),
-            ),
-          Tooltip(message: 'App version',
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(12)),
-              child: Text(_kVersion, style: TextStyle(fontSize: 10, fontFamily: 'monospace',
-                  color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600)),
             ),
           ),
           if (!_selectionMode) ...[
@@ -349,26 +378,16 @@ class _RelayScreenState extends State<RelayScreen> {
                 onPressed: () => setState(() => _viewMode = mode),
               ),
             IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Refresh'),
-          ] else ...[
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              tooltip: 'Delete selected',
-              onPressed: _deleteSelected,
-            ),
           ],
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red)))
-              : _files.isEmpty
-                  ? const Center(child: Text('No files yet. Upload something first.'))
-                  : switch (_viewMode) {
-                      _ViewMode.grid => _buildGrid(),
-                      _ViewMode.list => _buildList(),
-                      _ViewMode.longNames => _buildLongNames(),
-                    },
+      body: Stack(children: [
+        Padding(
+          padding: EdgeInsets.only(bottom: _selectionMode ? 56 : 0),
+          child: _buildContent(),
+        ),
+        if (_selectionMode) Positioned(bottom: 0, left: 0, right: 0, child: _buildSelectionBar()),
+      ]),
     );
   }
 }
