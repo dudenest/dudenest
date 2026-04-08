@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/auth/auth_service.dart';
 import 'starfield_background.dart';
 
@@ -12,10 +14,20 @@ class LoginScreen extends StatelessWidget {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         bottomNavigationBar: Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Text('$_version · © ${DateTime.now().year} Dudenest',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Color(0xFF4A6080), fontSize: 12)),
+          padding: const EdgeInsets.only(bottom: 20, top: 4),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              _SocialIconButton(icon: FontAwesomeIcons.github,
+                  url: 'https://github.com/dudenest/dudenest', tooltip: 'GitHub'),
+              const SizedBox(width: 16),
+              _SocialIconButton(icon: FontAwesomeIcons.discord,
+                  url: 'https://discord.gg/pYjR9jS4', tooltip: 'Discord'),
+            ]),
+            const SizedBox(height: 4),
+            Text('$_version · © ${DateTime.now().year} Dudenest',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF4A6080), fontSize: 12)),
+          ]),
         ),
         body: Center(
           child: ConstrainedBox(
@@ -89,5 +101,22 @@ class _GoogleIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Text('G', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4285F4)));
+  }
+}
+
+class _SocialIconButton extends StatelessWidget {
+  final IconData icon;
+  final String url;
+  final String tooltip;
+  const _SocialIconButton({required this.icon, required this.url, required this.tooltip});
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        icon: FaIcon(icon, size: 18, color: const Color(0xFF4A6080)),
+        onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+      ),
+    );
   }
 }

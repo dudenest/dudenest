@@ -54,23 +54,26 @@ class _AccountsScreenState extends State<AccountsScreen> {
               ? Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red)))
               : _providers.isEmpty
                   ? _emptyState(context)
-                  : ListView.builder(
-                      itemCount: _providers.length,
-                      itemBuilder: (ctx, i) {
-                        final p = _providers[i];
-                        final used = (p['quota_used_gb'] as num?)?.toStringAsFixed(1) ?? '?';
-                        final total = (p['quota_total_gb'] as num?)?.toStringAsFixed(1) ?? '?';
-                        final available = p['available'] == true;
-                        return ListTile(
-                          leading: _providerIcon(p['type'] as String? ?? 'gdrive', available),
-                          title: Text(p['email'] ?? p['id'] ?? 'Unknown'),
-                          subtitle: Text('${p['type'] ?? 'gdrive'} · $used GB / $total GB used'),
-                          trailing: available
-                              ? const Icon(Icons.check_circle, color: Colors.green)
-                              : const Icon(Icons.error, color: Colors.red),
-                        );
-                      },
-                    ),
+                  : Column(children: [
+                      _StorageSummaryCard(providers: _providers),
+                      Expanded(child: ListView.builder(
+                        itemCount: _providers.length,
+                        itemBuilder: (ctx, i) {
+                          final p = _providers[i];
+                          final used = (p['quota_used_gb'] as num?)?.toStringAsFixed(1) ?? '?';
+                          final total = (p['quota_total_gb'] as num?)?.toStringAsFixed(1) ?? '?';
+                          final available = p['available'] == true;
+                          return ListTile(
+                            leading: _providerIcon(p['type'] as String? ?? 'gdrive', available),
+                            title: Text(p['email'] ?? p['id'] ?? 'Unknown'),
+                            subtitle: Text('${p['type'] ?? 'gdrive'} · $used GB / $total GB used'),
+                            trailing: available
+                                ? const Icon(Icons.check_circle, color: Colors.green)
+                                : const Icon(Icons.error, color: Colors.red),
+                          );
+                        },
+                      )),
+                    ]),
     );
   }
 
@@ -547,6 +550,41 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
       ]),
     ),
   );
+}
+
+// ─── Storage summary card ─────────────────────────────────────────────────────
+
+class _StorageSummaryCard extends StatelessWidget {
+  final List<Map<String, dynamic>> providers;
+  const _StorageSummaryCard({required this.providers});
+  @override
+  Widget build(BuildContext context) {
+    final used = providers.fold<double>(0, (s, p) => s + ((p['quota_used_gb'] as num?)?.toDouble() ?? 0));
+    final total = providers.fold<double>(0, (s, p) => s + ((p['quota_total_gb'] as num?)?.toDouble() ?? 0));
+    final frac = total > 0 ? (used / total).clamp(0.0, 1.0) : 0.0;
+    final n = providers.length;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.cloud_done, size: 20),
+            const SizedBox(width: 8),
+            Text('$n account${n == 1 ? '' : 's'} connected',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+          ]),
+          const SizedBox(height: 10),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('${used.toStringAsFixed(2)} GB used', style: const TextStyle(fontSize: 13)),
+            Text('${total.toStringAsFixed(1)} GB total', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          ]),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(value: frac, minHeight: 6, borderRadius: BorderRadius.circular(3)),
+        ]),
+      ),
+    );
+  }
 }
 
 // ─── Helper widget ────────────────────────────────────────────────────────────

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'core/auth/auth_service.dart';
 import 'core/network/relay_client.dart';
 import 'features/auth/login_screen.dart';
@@ -141,7 +143,42 @@ class SettingsScreen extends StatelessWidget {
             MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay)),
           ),
         ),
+        const Divider(),
+        const ListTile(title: Text('Community', style: TextStyle(fontWeight: FontWeight.bold))),
+        _SocialLinkTile(icon: FontAwesomeIcons.github, color: const Color(0xFF24292e),
+            label: 'GitHub', subtitle: 'Source code', url: 'https://github.com/dudenest/dudenest'),
+        _SocialLinkTile(icon: FontAwesomeIcons.discord, color: const Color(0xFF5865F2),
+            label: 'Discord', subtitle: 'Community chat', url: 'https://discord.gg/pYjR9jS4'),
+        _SocialLinkTile(icon: FontAwesomeIcons.youtube, color: const Color(0xFFFF0000),
+            label: 'YouTube', subtitle: 'Videos — coming soon'),
+        _SocialLinkTile(icon: FontAwesomeIcons.facebook, color: const Color(0xFF1877F2),
+            label: 'Facebook', subtitle: 'Page — coming soon'),
+        _SocialLinkTile(icon: FontAwesomeIcons.xTwitter, color: Colors.black87,
+            label: 'X / Twitter', subtitle: 'Updates — coming soon'),
       ]),
+    );
+  }
+}
+
+class _SocialLinkTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String subtitle;
+  final String? url;
+  const _SocialLinkTile({required this.icon, required this.color, required this.label,
+      required this.subtitle, this.url});
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: color.withOpacity(0.12),
+        child: FaIcon(icon, color: color, size: 18),
+      ),
+      title: Text(label),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      trailing: url != null ? const Icon(Icons.open_in_new, size: 16, color: Colors.grey) : null,
+      onTap: url != null ? () => launchUrl(Uri.parse(url!), mode: LaunchMode.externalApplication) : null,
     );
   }
 }

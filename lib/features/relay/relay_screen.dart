@@ -16,6 +16,8 @@ class _RelayScreenState extends State<RelayScreen> {
   bool _loading = true;
   String? _error;
   _ViewMode _viewMode = _ViewMode.grid;
+  double? _storageUsedGb;
+  double? _storageTotalGb;
 
   static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif','svg'};
   static const _videoExts = {'mp4','mov','avi','mkv','webm','m4v','3gp'};
@@ -31,6 +33,12 @@ class _RelayScreenState extends State<RelayScreen> {
     } catch (e) {
       setState(() { _error = e.toString(); _loading = false; });
     }
+    // Load storage stats non-blocking (best-effort)
+    widget.relay.getProviders().then((providers) {
+      final used = providers.fold<double>(0, (s, p) => s + ((p['quota_used_gb'] as num?)?.toDouble() ?? 0));
+      final total = providers.fold<double>(0, (s, p) => s + ((p['quota_total_gb'] as num?)?.toDouble() ?? 0));
+      if (mounted) setState(() { _storageUsedGb = used; _storageTotalGb = total; });
+    }).catchError((_) {});  // non-critical — ignore errors
   }
 
   Future<void> _download(String fileId, String name) async {
@@ -184,6 +192,17 @@ class _RelayScreenState extends State<RelayScreen> {
       appBar: AppBar(
         title: const Text('Files'),
         actions: [
+          if (_storageUsedGb != null && _storageTotalGb != null)
+            Tooltip(message: 'Storage used across all accounts',
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(12)),
+                child: Text('${_storageUsedGb!.toStringAsFixed(1)}/${_storageTotalGb!.toStringAsFixed(1)} GB',
+                    style: TextStyle(fontSize: 10, fontFamily: 'monospace',
+                        color: scheme.onSecondaryContainer, fontWeight: FontWeight.w600)),
+              ),
+            ),
           Tooltip(message: 'App version',
             child: Container(
               margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
