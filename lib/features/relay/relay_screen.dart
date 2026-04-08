@@ -153,12 +153,12 @@ class _RelayScreenState extends State<RelayScreen> {
             IconButton(
               icon: Icon(Icons.photo_album_outlined, color: fg.withValues(alpha: 0.5)),
               tooltip: 'Add to album — coming soon',
-              onPressed: null,
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add to album — coming soon'), duration: Duration(seconds: 1))),
             ),
             IconButton(
               icon: Icon(Icons.share_outlined, color: fg.withValues(alpha: 0.5)),
               tooltip: 'Share — coming soon',
-              onPressed: null,
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share — coming soon'), duration: Duration(seconds: 1))),
             ),
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.red),
