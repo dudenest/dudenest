@@ -191,21 +191,19 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   Future<void> _startBrowserSession() async {
     setState(() { _browserBusy = true; _browserError = null; });
     try {
-      // Snapshot current provider count before auth — polling fallback uses this to detect new provider
+      // Snapshot providers before auth — polling detects both new AND re-authed (available: false → true)
       final beforeProviders = await widget.relay.getProviders().catchError((_) => <Map<String, dynamic>>[]);
       _pollProviderCount = beforeProviders.length;
       final step = await widget.relay.startAuthSession(_selectedProvider);
       final status = step['status'] as String?;
       final sid = step['session_id'] as String?;
       if (status == 'vnc_ready') {
-        // noVNC flow: relay opened Chromium on :99, return vnc_url for user to interact
         final vnc = step['vnc_url'] as String?;
         setState(() { _sessionId = sid; _vncUrl = vnc; _step = _AddStep.browserFlow; _browserBusy = false; });
         if (vnc != null) await launchUrl(Uri.parse(vnc), mode: LaunchMode.externalApplication);
         _listenForAuthDone(); // WebSocket primary path
-        _startPollingFallback(); // polling fallback in case WS auth_done is missed
+        _startPollingFallback(beforeProviders); // polling fallback: detects new + re-authed providers
       } else {
-        // Legacy screenshot+input flow (relay without noVNC support)
         setState(() { _sessionId = sid; _currentStep = step; _step = _AddStep.browserFlow; _browserBusy = false; });
       }
     } catch (e) {
@@ -229,16 +227,29 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
     }, onError: (_) {}, onDone: () {});
   }
 
-  // Polling fallback: checks /providers every 3s; if provider count increases → auth done
-  void _startPollingFallback() {
+  // Polling fallback: checks /providers every 3s
+  // Detects: (1) new provider added, (2) previously unavailable provider became available (re-auth)
+  void _startPollingFallback(List<Map<String, dynamic>> beforeProviders) {
+    final countBefore = beforeProviders.length;
+    // Emails of providers that were unavailable before auth — re-auth makes them available again
+    final unavailableBefore = beforeProviders
+        .where((p) => p['available'] != true)
+        .map((p) => p['email'] as String? ?? '')
+        .where((e) => e.isNotEmpty)
+        .toSet();
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       if (_step == _AddStep.done) { _pollTimer?.cancel(); return; }
       try {
         final providers = await widget.relay.getProviders();
-        if (providers.length > _pollProviderCount) {
-          final newProvider = providers.last; // most recently added
-          final email = newProvider['email'] as String?;
+        final newlyAvailable = providers.where(
+          (p) => unavailableBefore.contains(p['email'] as String? ?? '') && p['available'] == true
+        ).toList();
+        Map<String, dynamic>? resolved;
+        if (providers.length > countBefore) resolved = providers.last; // new provider
+        else if (newlyAvailable.isNotEmpty) resolved = newlyAvailable.first; // re-authed provider
+        if (resolved != null) {
+          final email = resolved['email'] as String?;
           if (mounted) setState(() { _oauthEmail = email; _step = _AddStep.done; });
           _pollTimer?.cancel();
           _wsChannel?.sink.close();
