@@ -141,7 +141,7 @@ class _AddAccountSheet extends StatefulWidget {
   State<_AddAccountSheet> createState() => _AddAccountSheetState();
 }
 
-class _AddAccountSheetState extends State<_AddAccountSheet> {
+class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerProviderStateMixin {
   _AddStep _step = _AddStep.selectProvider;
   _AuthMethod _method = _AuthMethod.flutterOAuth;
   String _selectedProvider = 'gdrive';
@@ -160,6 +160,8 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   WebSocketChannel? _wsChannel; // listens for auth_done from relay
   Timer? _pollTimer; // polling fallback — checks /providers every 3s in case WS misses auth_done
   int _pollProviderCount = 0; // snapshot of provider count before auth started
+  late AnimationController _pulseCtrl; // drives green button pulse
+  late Animation<double> _pulseAnim;
   final _ctrl = TextEditingController();
 
   // WebView Auth (Method E) state — in-app WebView with auto-fill
@@ -171,7 +173,9 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   String? _webviewError;
 
   @override
-  void dispose() { _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); _pollTimer?.cancel(); super.dispose(); }
+  void initState() { super.initState(); _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true); _pulseAnim = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut)); }
+  @override
+  void dispose() { _pulseCtrl.dispose(); _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); _pollTimer?.cancel(); super.dispose(); }
 
   // ── Method A: Flutter-side OAuth (user's IP ✅) ──
 
@@ -427,6 +431,19 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
   // Step 3B: Browser Auth — noVNC waiting UI or legacy screenshot+input
   Widget _buildBrowserFlow(ScrollController sc) {
     if (_vncUrl != null) return _buildVNCWaitingFlow(sc); // noVNC flow: VNC opened in browser tab
+    // Loading state — waiting for /auth/session response
+    if (_browserBusy) return ListView(controller: sc, padding: const EdgeInsets.all(32), children: [
+      Row(children: [
+        IconButton(icon: const Icon(Icons.arrow_back_ios_new), padding: EdgeInsets.zero,
+            onPressed: () => setState(() => _step = _AddStep.selectMethod)),
+        const SizedBox(width: 8),
+        const Text('Browser Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      ]),
+      const SizedBox(height: 48),
+      const Center(child: CircularProgressIndicator()),
+      const SizedBox(height: 16),
+      const Text('Opening login page on relay...', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+    ]);
     // Legacy screenshot+input flow (relay without noVNC)
     final stepData = _currentStep ?? {};
     final fields = (stepData['fields'] as List? ?? []).cast<Map<String, dynamic>>();
@@ -530,13 +547,30 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
         const Text('Tap the button below to open the Google login page.\nAfter signing in, this screen will update automatically.',
             textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
         const SizedBox(height: 32),
-        if (_vncUrl != null) ElevatedButton.icon(
-          icon: const Icon(Icons.open_in_new),
-          label: const Text('Open Google Sign-in'),
-          style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
-          onPressed: () => launchUrl(Uri.parse(_vncUrl!), mode: LaunchMode.externalApplication),
+        if (_vncUrl != null) AnimatedBuilder(
+          animation: _pulseAnim,
+          builder: (_, __) => Opacity(
+            opacity: _pulseAnim.value,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open login'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+                backgroundColor: const Color(0xFF4CAF50),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => launchUrl(Uri.parse(_vncUrl!), mode: LaunchMode.externalApplication),
+            ),
+          ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 12),
+        TextButton.icon(
+          icon: const Icon(Icons.close, size: 18),
+          label: const Text('Cancel'),
+          style: TextButton.styleFrom(foregroundColor: Colors.grey),
+          onPressed: () { widget.relay.authClose(_sessionId ?? ''); _wsChannel?.sink.close(); _pollTimer?.cancel(); Navigator.pop(context); },
+        ),
+        const SizedBox(height: 16),
         if (_browserError != null) ...[
           Text(_browserError!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
           const SizedBox(height: 16),
