@@ -200,7 +200,9 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
       if (status == 'vnc_ready') {
         final vnc = step['vnc_url'] as String?;
         setState(() { _sessionId = sid; _vncUrl = vnc; _step = _AddStep.browserFlow; _browserBusy = false; });
-        // NOTE: intentionally NOT calling launchUrl — user authenticates directly on relay VM screen
+        // NOTE: do NOT call launchUrl here — browsers block window.open() outside of user gesture.
+        // On web: user must click "Sign in" button below (direct click = no popup block).
+        // On mobile: WebView shown inline in _buildVNCWaitingFlow.
         _listenForAuthDone(); // WebSocket primary path
         _startPollingFallback(beforeProviders); // polling fallback: detects new + re-authed providers
       } else {
@@ -488,38 +490,63 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
     );
   }
 
-  // noVNC waiting UI — shown while user authenticates in the opened browser tab
-  Widget _buildVNCWaitingFlow(ScrollController sc) => ListView(
-    controller: sc,
-    padding: const EdgeInsets.all(32),
-    children: [
-      Row(children: [
-        IconButton(icon: const Icon(Icons.arrow_back_ios_new), padding: EdgeInsets.zero,
-            onPressed: () { widget.relay.authClose(_sessionId ?? ''); _wsChannel?.sink.close(); Navigator.pop(context); }),
-        const SizedBox(width: 8),
-        const Text('Browser Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-      ]),
-      const SizedBox(height: 32),
-      const Icon(Icons.computer, size: 64, color: Colors.blue),
-      const SizedBox(height: 24),
-      const Text('Google authentication in progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-      const SizedBox(height: 8),
-      const Text('Sign in to Google on the relay browser window.\n\nThe app will automatically update when done.',
-          textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-      const SizedBox(height: 32),
-      const Center(child: CircularProgressIndicator()),
-      const SizedBox(height: 24),
-      if (_browserError != null) ...[
-        Text(_browserError!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
-        const SizedBox(height: 16),
+  // noVNC waiting UI — shown while user authenticates
+  // Mobile: embedded WebView with noVNC; Web/desktop: button that opens VNC in browser tab
+  Widget _buildVNCWaitingFlow(ScrollController sc) {
+    // Mobile: show WebView with noVNC inline (user authenticates inside the app)
+    if (!kIsWeb && _vncUrl != null && _webviewCtrl == null) {
+      final ctrl = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..loadRequest(Uri.parse(_vncUrl!));
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() => _webviewCtrl = ctrl); });
+    }
+    if (!kIsWeb && _webviewCtrl != null) {
+      return Column(children: [
+        AppBar(
+          leading: IconButton(icon: const Icon(Icons.close),
+              onPressed: () { widget.relay.authClose(_sessionId ?? ''); _wsChannel?.sink.close(); _pollTimer?.cancel(); Navigator.pop(context); }),
+          title: const Text('Sign in to Google'),
+          actions: [const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))],
+        ),
+        Expanded(child: WebViewWidget(controller: _webviewCtrl!)),
+      ]);
+    }
+    // Web/desktop: user must click to open VNC (popup blocker requires direct user gesture)
+    return ListView(
+      controller: sc,
+      padding: const EdgeInsets.all(32),
+      children: [
+        Row(children: [
+          IconButton(icon: const Icon(Icons.arrow_back_ios_new), padding: EdgeInsets.zero,
+              onPressed: () { widget.relay.authClose(_sessionId ?? ''); _wsChannel?.sink.close(); _pollTimer?.cancel(); Navigator.pop(context); }),
+          const SizedBox(width: 8),
+          const Text('Browser Login', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ]),
+        const SizedBox(height: 32),
+        const Icon(Icons.computer, size: 64, color: Colors.blue),
+        const SizedBox(height: 24),
+        const Text('Sign in to Google', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+        const SizedBox(height: 8),
+        const Text('Tap the button below to open the Google login page.\nAfter signing in, this screen will update automatically.',
+            textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 32),
+        if (_vncUrl != null) ElevatedButton.icon(
+          icon: const Icon(Icons.open_in_new),
+          label: const Text('Open Google Sign-in'),
+          style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
+          onPressed: () => launchUrl(Uri.parse(_vncUrl!), mode: LaunchMode.externalApplication),
+        ),
+        const SizedBox(height: 24),
+        if (_browserError != null) ...[
+          Text(_browserError!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+        ],
+        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: 8),
+        const Text('Waiting for authentication...', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 12)),
       ],
-      if (_vncUrl != null) OutlinedButton.icon(
-        icon: const Icon(Icons.open_in_new),
-        label: const Text('Open login in browser'),
-        onPressed: () => launchUrl(Uri.parse(_vncUrl!), mode: LaunchMode.externalApplication),
-      ),
-    ],
-  );
+    );
+  }
 
   // ── Method E: WebView auto-fill ──
 
