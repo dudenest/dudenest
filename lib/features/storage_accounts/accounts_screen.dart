@@ -200,7 +200,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
       if (status == 'vnc_ready') {
         final vnc = step['vnc_url'] as String?;
         setState(() { _sessionId = sid; _vncUrl = vnc; _step = _AddStep.browserFlow; _browserBusy = false; });
-        if (vnc != null) await launchUrl(Uri.parse(vnc), mode: LaunchMode.externalApplication);
+        // NOTE: intentionally NOT calling launchUrl — user authenticates directly on relay VM screen
         _listenForAuthDone(); // WebSocket primary path
         _startPollingFallback(beforeProviders); // polling fallback: detects new + re-authed providers
       } else {
@@ -504,7 +504,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
       const SizedBox(height: 24),
       const Text('Google authentication in progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
       const SizedBox(height: 8),
-      const Text('A Google login page has been opened in your browser.\nSign in to complete the process.\n\nThe app will automatically update when done.',
+      const Text('Sign in to Google on the relay browser window.\n\nThe app will automatically update when done.',
           textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
       const SizedBox(height: 32),
       const Center(child: CircularProgressIndicator()),
@@ -513,10 +513,10 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
         Text(_browserError!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
         const SizedBox(height: 16),
       ],
-      OutlinedButton.icon(
+      if (_vncUrl != null) OutlinedButton.icon(
         icon: const Icon(Icons.open_in_new),
-        label: const Text('Re-open login tab'),
-        onPressed: _vncUrl != null ? () => launchUrl(Uri.parse(_vncUrl!), mode: LaunchMode.externalApplication) : null,
+        label: const Text('Open login in browser'),
+        onPressed: () => launchUrl(Uri.parse(_vncUrl!), mode: LaunchMode.externalApplication),
       ),
     ],
   );
