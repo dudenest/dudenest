@@ -16,7 +16,7 @@ class RelayScreen extends StatefulWidget {
 class _RelayScreenState extends State<RelayScreen> {
   List<Map<String, dynamic>> _files = [];
   bool _loading = true;
-  String? _error;
+  Object? _error;
   _ViewMode _viewMode = _ViewMode.grid;
   double? _storageUsedGb;
   double? _storageTotalGb;
@@ -35,7 +35,7 @@ class _RelayScreenState extends State<RelayScreen> {
       final files = await widget.relay.listFiles();
       setState(() { _files = files; _loading = false; });
     } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
+      setState(() { _error = e; _loading = false; });
     }
     // Load storage stats non-blocking (best-effort)
     widget.relay.getProviders().then((providers) {
@@ -51,7 +51,7 @@ class _RelayScreenState extends State<RelayScreen> {
       await downloadBytes(name, bytes);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Downloaded: $name')));
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); });
+      if (mounted) setState(() { _error = e; });
     }
   }
 
@@ -76,7 +76,7 @@ class _RelayScreenState extends State<RelayScreen> {
         _load();
       }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); });
+      if (mounted) setState(() { _error = e; });
     }
   }
 
@@ -129,7 +129,7 @@ class _RelayScreenState extends State<RelayScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(failed == 0
           ? 'Deleted $count file${count == 1 ? '' : 's'}'
-          : '$failed of $count deletions failed'),
+          : '\$failed of $count deletions failed'),
       backgroundColor: failed == 0 ? Colors.green : Colors.red,
     ));
     _load();
@@ -325,7 +325,7 @@ class _RelayScreenState extends State<RelayScreen> {
 
   Widget _buildContent() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red)));
+    if (_error != null) return _ErrorDisplay(error: _error!, onRetry: _load);
     if (_files.isEmpty) return const Center(child: Text('No files yet. Upload something first.'));
     return switch (_viewMode) {
       _ViewMode.grid => _buildGrid(),
@@ -454,6 +454,52 @@ class _FullscreenViewer extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+// ─── Error Display Widget (Duplicated from accounts_screen for consistency) ───
+
+class _ErrorDisplay extends StatelessWidget {
+  final Object error;
+  final VoidCallback onRetry;
+  const _ErrorDisplay({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    String msg = error.toString();
+    String? body;
+    int? code;
+    if (error is RelayException) {
+      final re = error as RelayException;
+      msg = re.message;
+      code = re.statusCode;
+      body = re.body;
+    }
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+          const SizedBox(height: 16),
+          Text('Error: $msg', style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          if (code != null) ...[
+            const SizedBox(height: 8),
+            Text('Status Code: $code', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+          if (body != null && body.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.grey.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+              child: Text(body.length > 500 ? body.substring(0, 500) + '...' : body,
+                  style: const TextStyle(fontSize: 10, fontFamily: 'monospace'), maxLines: 10, overflow: TextOverflow.ellipsis),
+            ),
+          ],
+          const SizedBox(height: 24),
+          ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+        ]),
+      ),
     );
   }
 }

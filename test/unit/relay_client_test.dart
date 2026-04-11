@@ -20,9 +20,14 @@ void main() {
       expect(providers[0]['quota_total_gb'], 15.0);
     });
 
-    test('throws on non-200', () async {
-      final c = _client((req) async => http.Response('error', 503));
-      expect(() => c.getProviders(), throwsException);
+    test('throws RelayException on 401', () async {
+      final c = _client((req) async => http.Response('unauthorized', 401));
+      expect(() => c.getProviders(), throwsA(isA<RelayException>().having((e) => e.statusCode, 'statusCode', 401)));
+    });
+
+    test('throws RelayException on HTML response', () async {
+      final c = _client((req) async => http.Response('<!DOCTYPE html><html>...</html>', 200, headers: {'content-type': 'text/html'}));
+      expect(() => c.getProviders(), throwsA(isA<RelayException>().having((e) => e.message, 'message', contains('Expected JSON'))));
     });
 
     test('returns empty list when providers key absent', () async {
@@ -46,9 +51,9 @@ void main() {
       expect(files[0]['name'], 'photo.jpg');
     });
 
-    test('throws on non-200', () async {
-      final c = _client((req) async => http.Response('', 500));
-      expect(() => c.listFiles(), throwsException);
+    test('throws RelayException on 500', () async {
+      final c = _client((req) async => http.Response('server error', 500));
+      expect(() => c.listFiles(), throwsA(isA<RelayException>().having((e) => e.statusCode, 'statusCode', 500)));
     });
   });
 
@@ -60,9 +65,9 @@ void main() {
       expect(bytes, equals(expected));
     });
 
-    test('throws on 404', () async {
+    test('throws RelayException on 404', () async {
       final c = _client((req) async => http.Response('not found', 404));
-      expect(() => c.downloadFile('missing'), throwsException);
+      expect(() => c.downloadFile('missing'), throwsA(isA<RelayException>().having((e) => e.statusCode, 'statusCode', 404)));
     });
   });
 
@@ -74,9 +79,9 @@ void main() {
       await expectLater(c.deleteFile('abc123'), completes);
     });
 
-    test('throws on non-200', () async {
+    test('throws RelayException on non-200', () async {
       final c = _client((req) async => http.Response('error', 500));
-      expect(() => c.deleteFile('abc123'), throwsException);
+      expect(() => c.deleteFile('abc123'), throwsA(isA<RelayException>().having((e) => e.statusCode, 'statusCode', 500)));
     });
   });
 }

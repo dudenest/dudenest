@@ -19,7 +19,7 @@ class AccountsScreen extends StatefulWidget {
 class _AccountsScreenState extends State<AccountsScreen> {
   List<Map<String, dynamic>> _providers = [];
   bool _loading = true;
-  String? _error;
+  Object? _error;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -30,7 +30,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
       final providers = await widget.relay.getProviders();
       setState(() { _providers = providers; _loading = false; });
     } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
+      debugPrint('AccountsScreen load error: $e');
+      setState(() { _error = e; _loading = false; });
     }
   }
 
@@ -54,7 +55,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red)))
+              ? _ErrorDisplay(error: _error!, onRetry: _load)
               : _providers.isEmpty
                   ? _emptyState(context)
                   : Column(children: [
@@ -71,7 +72,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                             leading: _providerIcon(p['type'] as String? ?? 'gdrive', available),
                             title: Text(p['email'] ?? p['id'] ?? 'Unknown'),
                             subtitle: available
-                                ? Text('${p['type'] ?? 'gdrive'} · $used GB / $total GB used')
+                                ? Text('${p["type"] ?? "gdrive"} · $used GB / $total GB used')
                                 : Text(errMsg, style: const TextStyle(color: Colors.red, fontSize: 12), overflow: TextOverflow.ellipsis),
                             trailing: Tooltip(
                               message: available ? 'Connected' : 'Unavailable — tap to reconnect',
@@ -127,6 +128,52 @@ class _AccountsScreenState extends State<AccountsScreen> {
   );
 
   RelayClient get relay => widget.relay;
+}
+
+// ─── Error Display Widget ───────────────────────────────────────────────────
+
+class _ErrorDisplay extends StatelessWidget {
+  final Object error;
+  final VoidCallback onRetry;
+  const _ErrorDisplay({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    String msg = error.toString();
+    String? body;
+    int? code;
+    if (error is RelayException) {
+      final re = error as RelayException;
+      msg = re.message;
+      code = re.statusCode;
+      body = re.body;
+    }
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+          const SizedBox(height: 16),
+          Text('Error: $msg', style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          if (code != null) ...[
+            const SizedBox(height: 8),
+            Text('Status Code: $code', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+          if (body != null && body.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.grey.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+              child: Text(body.length > 500 ? body.substring(0, 500) + '...' : body,
+                  style: const TextStyle(fontSize: 10, fontFamily: 'monospace'), maxLines: 10, overflow: TextOverflow.ellipsis),
+            ),
+          ],
+          const SizedBox(height: 24),
+          ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+        ]),
+      ),
+    );
+  }
 }
 
 // ─── Add Account Sheet ────────────────────────────────────────────────────────
@@ -656,14 +703,14 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
     if (url.contains('accounts.google.com') && url.contains('identifier')) {
       // Email step
       await ctrl.runJavaScript(
-        "var e=document.querySelector('input[type=email]'); if(e){e.value='${email.replaceAll("'", "\\'")}';e.dispatchEvent(new Event('input',{bubbles:true}));}");
+        "var e=document.querySelector('input[type=email]'); if(e){e.value='\${email.replaceAll("'", "\\'")}';e.dispatchEvent(new Event('input',{bubbles:true}));}");
       await Future.delayed(const Duration(milliseconds: 400));
       await ctrl.runJavaScript(
         "var b=document.querySelector('#identifierNext button,button[jsname=LgbsSe]'); if(b)b.click();");
     } else if (url.contains('accounts.google.com') && url.contains('challenge/pwd')) {
       // Password step
       await ctrl.runJavaScript(
-        "var p=document.querySelector('input[type=password]'); if(p){p.value='${password.replaceAll("'", "\\'")}';p.dispatchEvent(new Event('input',{bubbles:true}));}");
+        "var p=document.querySelector('input[type=password]'); if(p){p.value='\${password.replaceAll("'", "\\'")}';p.dispatchEvent(new Event('input',{bubbles:true}));}");
       await Future.delayed(const Duration(milliseconds: 400));
       await ctrl.runJavaScript(
         "var b=document.querySelector('#passwordNext button,button[jsname=LgbsSe]'); if(b)b.click();");
@@ -671,7 +718,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
       // 2FA step — phone number if available
       if (phone.isNotEmpty) {
         await ctrl.runJavaScript(
-          "var p=document.querySelector('input[type=tel],input[name=phoneNumber]'); if(p){p.value='${phone.replaceAll("'", "\\'")}';p.dispatchEvent(new Event('input',{bubbles:true}));}");
+          "var p=document.querySelector('input[type=tel],input[name=phoneNumber]'); if(p){p.value='\${phone.replaceAll("'", "\\'")}';p.dispatchEvent(new Event('input',{bubbles:true}));}");
         await Future.delayed(const Duration(milliseconds: 400));
         await ctrl.runJavaScript("var b=document.querySelector('button[jsname=LgbsSe],#idvPreregisteredPhoneNext button'); if(b)b.click();");
       }
@@ -742,7 +789,7 @@ class _StorageSummaryCard extends StatelessWidget {
           Row(children: [
             const Icon(Icons.cloud_done, size: 20),
             const SizedBox(width: 8),
-            Text('$n account${n == 1 ? '' : 's'} connected',
+            Text('$n account${n == 1 ? "" : "s"} connected',
                 style: const TextStyle(fontWeight: FontWeight.bold)),
           ]),
           const SizedBox(height: 10),

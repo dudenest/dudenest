@@ -9,7 +9,19 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Run tests
+        run: flutter test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,16 +37,16 @@ jobs:
 
       - name: Build Flutter web
         run: |
-          VERSION="sha-$(echo "$GITHUB_SHA" | cut -c1-7)"
-          echo "APP_VERSION=$VERSION"
-          flutter build web --release --pwa-strategy none "--dart-define=APP_VERSION=$VERSION"
+          VERSION="sha-\$(echo "\$GITHUB_SHA" | cut -c1-7)"
+          echo "APP_VERSION=\$VERSION"
+          flutter build web --release --pwa-strategy none "--dart-define=APP_VERSION=\$VERSION"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: \${{ github.actor }}
+          password: \${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -42,8 +54,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.IMAGE_NAME }}:latest
+            \${{ env.IMAGE_NAME }}:\${{ github.sha }}
+            \${{ env.IMAGE_NAME }}:latest
 
   deploy:
     needs: build
@@ -52,13 +64,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "\${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u \${{ github.actor }} --password-stdin
 
       - name: Deploy to Docker Swarm
         env:
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: \${{ github.sha }}
         run: |
-          IMAGE_TAG=$IMAGE_TAG docker stack deploy \
+          IMAGE_TAG=\$IMAGE_TAG docker stack deploy \
             --compose-file docker/web/docker-stack.yml \
             --with-registry-auth \
             --resolve-image always \
@@ -71,8 +83,8 @@ jobs:
 
       - name: Purge Cloudflare cache
         run: |
-          curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+          curl -s -X POST "https://api.cloudflare.com/client/v4/zones/\${{ secrets.CF_ZONE_ID }}/purge_cache" \
+            -H "Authorization: Bearer \${{ secrets.CF_API_TOKEN }}" \
             -H "Content-Type: application/json" \
             --data '{"files":["https://app.dudenest.com/main.dart.js","https://app.dudenest.com/index.html","https://app.dudenest.com/flutter_bootstrap.js","https://app.dudenest.com/flutter.js"]}' \
             | grep -o '"success":[a-z]*'
