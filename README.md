@@ -139,6 +139,13 @@ test/
 
 ## Changelog
 
+### v0.4.0 — 2026-04-11 — Security Hardening + Diagnostics
+- 🔐 **Relay API Security**: Every request to Relay (including `Image.network` for thumbnails and full images) now requires a `Bearer <JWT>` authorization header.
+- 🔧 **RelayClient Hardening**: Improved error handling with `RelayException`. The app now verifies `Content-Type: application/json` before parsing.
+- 🧪 **Automated CI/CD Tests**: Added unit and widget tests for Relay authentication and error states. Integrated `flutter test` into GitHub Actions.
+- 🐛 **UI Overflow Fix**: Fixed `RenderFlex` overflow on `LoginScreen` for smaller screens.
+- 🛠️ **Diagnostic UI**: Added `_ErrorDisplay` widget showing HTTP status codes and response bodies for easier infrastructure debugging.
+
 ### v0.3.0 — 2026-04-08 — OAuth E2E + Cloud Accounts
 - 🔐 **OAuth E2E fixed**: `web/auth` callback now uses localStorage (flutter_web_auth_2 v4 new-tab flow)
 - 🔐 **Fixed web/auth MIME**: nginx served file as `application/octet-stream` (download) → now HTML
