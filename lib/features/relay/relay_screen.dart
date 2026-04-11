@@ -185,6 +185,7 @@ class _RelayScreenState extends State<RelayScreen> {
         borderRadius: BorderRadius.circular(4),
         child: Image.network(
           '${widget.relay.baseUrl}/files/$id/thumbnail',
+          headers: widget.relay.headers,
           width: sz, height: sz, fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => SizedBox(width: sz, height: sz,
               child: Center(child: Icon(_fileIcon(name)))),
@@ -231,7 +232,9 @@ class _RelayScreenState extends State<RelayScreen> {
         child: Stack(fit: StackFit.expand, children: [
           // Content
           isImg
-              ? Image.network('${widget.relay.baseUrl}/files/$id/thumbnail', fit: BoxFit.cover,
+              ? Image.network('${widget.relay.baseUrl}/files/$id/thumbnail',
+                  headers: widget.relay.headers,
+                  fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0D1117),
                       child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040)))),
                   loadingBuilder: (_, child, p) => p == null ? child
@@ -420,7 +423,9 @@ class _FullscreenViewer extends StatelessWidget {
         Center(
           child: InteractiveViewer(
             minScale: 0.5, maxScale: 8.0,
-            child: Image.network(url, fit: BoxFit.contain,
+            child: Image.network(url,
+              headers: relay.headers,
+              fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white54, size: 64),
               loadingBuilder: (_, child, p) => p == null ? child
                   : const Center(child: CircularProgressIndicator(color: Colors.white54)),

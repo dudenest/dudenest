@@ -17,14 +17,18 @@ class RelayClient {
   final http.Client _http;
   RelayClient(this.baseUrl, {http.Client? client}) : _http = client ?? http.Client();
 
-  Map<String, String> get _headers {
+  Map<String, String> get headers {
     final token = AuthService().token;
     return {
       if (token != null) 'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
     };
   }
+
+  Map<String, String> get _headers => {
+    ...headers,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
 
   // WebSocket URL: ws://host:port/ws (or wss:// for https relay)
   String get wsUrl => baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://') + '/ws';
@@ -61,7 +65,7 @@ class RelayClient {
   // POST /files/upload — multipart form with field "file"
   Future<Map<String, dynamic>> uploadFile(String filename, Uint8List bytes) async {
     final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/files/upload'))
-      ..headers.addAll({'Authorization': 'Bearer \${AuthService().token ?? ""}', 'Accept': 'application/json'})
+      ..headers.addAll({...headers, 'Accept': 'application/json'})
       ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     final streamed = await _http.send(req);
     final resp = await http.Response.fromStream(streamed);
@@ -72,7 +76,7 @@ class RelayClient {
   Future<Uint8List> downloadFile(String fileId) async {
     final resp = await _http.get(Uri.parse('$baseUrl/files/$fileId'), headers: _headers);
     if (resp.statusCode != 200) {
-      throw RelayException('GET /files/$fileId: HTTP \${resp.statusCode}', statusCode: resp.statusCode, body: resp.body);
+      throw RelayException('GET /files/$fileId: HTTP ${resp.statusCode}', statusCode: resp.statusCode, body: resp.body);
     }
     return resp.bodyBytes;
   }
