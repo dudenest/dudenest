@@ -1,6 +1,6 @@
 # Dudenest
 
-![Version](https://img.shields.io/badge/Version-v0.3.0-blue) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![Last Update](https://img.shields.io/badge/Update-2026--04--08-lightgrey)
+![Version](https://img.shields.io/badge/Version-v0.4.1-blue) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![Last Update](https://img.shields.io/badge/Update-2026--04--12-lightgrey)
 
 **Your files. Your blocks. Your cloud.**
 
@@ -138,6 +138,12 @@ test/
 ```
 
 ## Changelog
+
+### v0.4.1 — 2026-04-12 — Maintenance & Release
+- 🚀 **Ecosystem Sync**: Unified versioning across Flutter app, Backend, and Relay.
+- 📦 **GitHub Releases**: Official release of v0.4.1 binaries and source.
+- 🔧 **Relay Recovery**: Service restored on `relay-poc` after `pve101` host crash.
+- 🧹 **Service Cleanup**: Disabled legacy `relay-auth.service` in favor of unified `relay.service`.
 
 ### v0.4.0 — 2026-04-11 — Security Hardening + Diagnostics
 - 🔐 **Relay API Security**: Every request to Relay (including `Image.network` for thumbnails and full images) now requires a `Bearer <JWT>` authorization header.

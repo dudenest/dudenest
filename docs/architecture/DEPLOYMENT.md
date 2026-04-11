@@ -110,14 +110,18 @@ services:
 
 ---
 
-## Updating the Application
+## Relay Deployment (Go)
 
-Every push to `main` triggers an automatic deploy:
-```bash
-git push origin main
-# Pipeline: ~5 min build + ~30s deploy + Cloudflare cache purge
-# Check: github.com/dudenest/dudenest/actions
-```
+The Dudenest Relay is deployed to the `relay-poc` VM (reference implementation) using a specialized GitHub Actions workflow.
+
+### Continuous Deployment (CD)
+1. **Build**: Go binaries are built for multiple platforms (amd64, arm64, windows, etc.).
+2. **Deployer Container (DooD)**: Since the self-hosted runner is isolated from ZeroTier, it uses **Docker-out-of-Docker**:
+   - Creates a unique temporary container (`alpine`) with `--network host`.
+   - Copies the binary and SSH keys into the container via `docker cp`.
+   - Executes deployment commands from within the container to access the host's ZeroTier interfaces.
+3. **SSH ProxyJump**: Connection to `relay-poc` (192.168.0.119) is established via a jump host `pve101` (10.51.1.101).
+4. **Service Restart**: The `relay.service` is restarted on the target VM.
 
 ---
 

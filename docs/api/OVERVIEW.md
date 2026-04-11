@@ -9,7 +9,11 @@
 
 ## Authentication
 
-None — API is accessible only through WireGuard (Headscale). The network perimeter is the security boundary.
+All API endpoints (except `/health` and noVNC static assets) require JWT authentication.
+
+- **Header**: `Authorization: Bearer <JWT_TOKEN>`
+- **Validation**: Relay validates the JWT using a HS256 shared secret (`JWT_SECRET`) with the `dudenest-backend`.
+- **Scope**: The token is issued by the backend during the main app login flow.
 
 ---
 
@@ -19,7 +23,7 @@ All endpoints return:
 ```
 Access-Control-Allow-Origin: *
 Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS
-Access-Control-Allow-Headers: Content-Type
+Access-Control-Allow-Headers: Content-Type, Authorization
 ```
 
 ---
