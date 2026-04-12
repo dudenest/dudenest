@@ -73,6 +73,12 @@ class RelayClient {
     return _processResponse(resp, 'POST /files/upload') as Map<String, dynamic>;
   }
 
+  // GET /files/{id}/map — returns full FileMap (chunks, shards, locations)
+  Future<Map<String, dynamic>> getFileMap(String fileId) async {
+    final resp = await _http.get(Uri.parse('$baseUrl/files/$fileId/map'), headers: _headers);
+    return _processResponse(resp, 'GET /files/$fileId/map') as Map<String, dynamic>;
+  }
+
   // GET /files/{id} — download file bytes
   Future<Uint8List> downloadFile(String fileId) async {
     final resp = await _http.get(Uri.parse('$baseUrl/files/$fileId'), headers: _headers);

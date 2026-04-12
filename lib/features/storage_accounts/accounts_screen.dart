@@ -37,61 +37,80 @@ class _AccountsScreenState extends State<AccountsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Cloud Accounts'), actions: [
-        IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-      ]),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('Add Account'),
-        onPressed: () async {
-          await showModalBottomSheet(
-            context: context, isScrollControlled: true, useSafeArea: true,
-            builder: (_) => _AddAccountSheet(relay: widget.relay),
-          );
-          _load();
-        },
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Cloud Accounts'),
+          actions: [
+            IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.list), text: 'Accounts'),
+              Tab(icon: Icon(Icons.insights), text: 'Visualizer'),
+            ],
+          ),
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          icon: const Icon(Icons.add),
+          label: const Text('Add Account'),
+          onPressed: () async {
+            await showModalBottomSheet(
+              context: context, isScrollControlled: true, useSafeArea: true,
+              builder: (_) => _AddAccountSheet(relay: widget.relay),
+            );
+            _load();
+          },
+        ),
+        body: TabBarView(
+          children: [
+            _buildList(),
+            StorageVisualizer(relay: widget.relay),
+          ],
+        ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _ErrorDisplay(error: _error!, onRetry: _load)
-              : _providers.isEmpty
-                  ? _emptyState(context)
-                  : Column(children: [
-                      _StorageSummaryCard(providers: _providers),
-                      Expanded(child: ListView.builder(
-                        itemCount: _providers.length,
-                        itemBuilder: (ctx, i) {
-                          final p = _providers[i];
-                          final used = (p['quota_used_gb'] as num?)?.toStringAsFixed(1) ?? '?';
-                          final total = (p['quota_total_gb'] as num?)?.toStringAsFixed(1) ?? '?';
-                          final available = p['available'] == true;
-                          final errMsg = (p['last_error'] ?? p['error']) as String? ?? 'Token expired — tap to reconnect';
-                          return ListTile(
-                            leading: _providerIcon(p['type'] as String? ?? 'gdrive', available),
-                            title: Text(p['email'] ?? p['id'] ?? 'Unknown'),
-                            subtitle: available
-                                ? Text('${p["type"] ?? "gdrive"} · $used GB / $total GB used')
-                                : Text(errMsg, style: const TextStyle(color: Colors.red, fontSize: 12), overflow: TextOverflow.ellipsis),
-                            trailing: Tooltip(
-                              message: available ? 'Connected' : 'Unavailable — tap to reconnect',
-                              child: available
-                                  ? const Icon(Icons.check_circle, color: Colors.green)
-                                  : const Icon(Icons.error, color: Colors.red),
-                            ),
-                            onTap: available ? null : () async {
-                              await showModalBottomSheet(
-                                context: context, isScrollControlled: true, useSafeArea: true,
-                                builder: (_) => _AddAccountSheet(relay: widget.relay),
-                              );
-                              _load();
-                            },
-                          );
-                        },
-                      )),
-                    ]),
     );
+  }
+
+  Widget _buildList() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) return _ErrorDisplay(error: _error!, onRetry: _load);
+    if (_providers.isEmpty) return _emptyState(context);
+
+    return Column(children: [
+      _StorageSummaryCard(providers: _providers),
+      Expanded(child: ListView.builder(
+        itemCount: _providers.length,
+        itemBuilder: (ctx, i) {
+          final p = _providers[i];
+          final used = (p['quota_used_gb'] as num?)?.toStringAsFixed(1) ?? '?';
+          final total = (p['quota_total_gb'] as num?)?.toStringAsFixed(1) ?? '?';
+          final available = p['available'] == true;
+          final errMsg = (p['last_error'] ?? p['error']) as String? ?? 'Token expired — tap to reconnect';
+          return ListTile(
+            leading: _providerIcon(p['type'] as String? ?? 'gdrive', available),
+            title: Text(p['email'] ?? p['id'] ?? 'Unknown'),
+            subtitle: available
+                ? Text('${p["type"] ?? "gdrive"} · $used GB / $total GB used')
+                : Text(errMsg, style: const TextStyle(color: Colors.red, fontSize: 12), overflow: TextOverflow.ellipsis),
+            trailing: Tooltip(
+              message: available ? 'Connected' : 'Unavailable — tap to reconnect',
+              child: available
+                  ? const Icon(Icons.check_circle, color: Colors.green)
+                  : const Icon(Icons.error, color: Colors.red),
+            ),
+            onTap: available ? null : () async {
+              await showModalBottomSheet(
+                context: context, isScrollControlled: true, useSafeArea: true,
+                builder: (_) => _AddAccountSheet(relay: widget.relay),
+              );
+              _load();
+            },
+          );
+        },
+      )),
+    ]);
   }
 
   Widget _providerIcon(String type, bool available) {
