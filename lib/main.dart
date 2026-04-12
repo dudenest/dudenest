@@ -24,7 +24,36 @@ class DudenestApp extends StatefulWidget {
 
 class DudenestAppState extends State<DudenestApp> {
   ThemeMode _themeMode = ThemeMode.system;
-  void setThemeMode(ThemeMode mode) => setState(() => _themeMode = mode);
+  String _storageStrategy = 'Replica'; // 'Chunking' or 'Replica'
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _themeMode = ThemeMode.values[prefs.getInt('theme_mode') ?? 0];
+      _storageStrategy = prefs.getString('storage_strategy') ?? 'Replica';
+    });
+  }
+
+  void setThemeMode(ThemeMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('theme_mode', mode.index);
+    setState(() => _themeMode = mode);
+  }
+
+  void setStorageStrategy(String strategy) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('storage_strategy', strategy);
+    setState(() => _storageStrategy = strategy);
+  }
+
+  String get storageStrategy => _storageStrategy;
+
   void refresh() => setState(() {}); // called after sign-out to rebuild
 
   @override
@@ -133,6 +162,19 @@ class SettingsScreen extends StatelessWidget {
         ),
         const Divider(),
         const ListTile(title: Text('Storage', style: TextStyle(fontWeight: FontWeight.bold))),
+        ListTile(
+          leading: const Icon(Icons.SdStorage),
+          title: const Text('Storage Strategy'),
+          subtitle: Text(app.storageStrategy == 'Replica' ? 'Main + 2 Backups' : 'Chunking + Erasure Coding'),
+          trailing: SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'Chunking', label: Text('Chunking'), icon: Icon(Icons.grid_view)),
+              ButtonSegment(value: 'Replica', label: Text('Replica'), icon: Icon(Icons.copy_all)),
+            ],
+            selected: {app.storageStrategy},
+            onSelectionChanged: (val) => app.setStorageStrategy(val.first),
+          ),
+        ),
         ListTile(
           leading: const Icon(Icons.cloud),
           title: const Text('Cloud Accounts'),

@@ -48,7 +48,8 @@ class _UploadScreenState extends State<UploadScreen> {
 
   Future<void> _uploadJob(_UploadJob job) async {
     try {
-      await widget.relay.uploadFile(job.name, job.bytes);
+      final strategy = DudenestApp.of(context).storageStrategy;
+      await widget.relay.uploadFile(job.name, job.bytes, strategy: strategy);
       if (mounted) setState(() { job.progress = 1.0; job.done = true; });
     } catch (e) {
       if (mounted) setState(() { job.error = e.toString(); });

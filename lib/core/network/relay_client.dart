@@ -63,9 +63,10 @@ class RelayClient {
   }
 
   // POST /files/upload — multipart form with field "file"
-  Future<Map<String, dynamic>> uploadFile(String filename, Uint8List bytes) async {
+  Future<Map<String, dynamic>> uploadFile(String filename, Uint8List bytes, {String strategy = 'Replica'}) async {
     final req = http.MultipartRequest('POST', Uri.parse('$baseUrl/files/upload'))
       ..headers.addAll({...headers, 'Accept': 'application/json'})
+      ..fields['strategy'] = strategy
       ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
     final streamed = await _http.send(req);
     final resp = await http.Response.fromStream(streamed);
