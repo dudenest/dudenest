@@ -20,6 +20,7 @@ dependencies:
   font_awesome_flutter: ^10.7.0  # Brand icons: GitHub, Discord, YouTube, Facebook, X
   fl_chart: ^1.2.0
   graphic: ^2.7.0
+  logger: ^2.7.0
 
 dev_dependencies:
   flutter_test:

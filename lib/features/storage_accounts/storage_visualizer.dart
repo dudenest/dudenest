@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:logger/logger.dart';
 import '../../../core/network/relay_client.dart';
 
 class StorageVisualizer extends StatefulWidget {
@@ -11,6 +12,7 @@ class StorageVisualizer extends StatefulWidget {
 }
 
 class _StorageVisualizerState extends State<StorageVisualizer> {
+  final _log = Logger();
   bool _loading = true;
   List<Map<String, dynamic>> _mappingData = [];
   List<Map<String, dynamic>> _providers = [];
@@ -23,18 +25,18 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
 
   Future<void> _loadData() async {
     try {
-      debugPrint('Visualizer: Loading providers...');
+      _log.i('Visualizer: Loading providers...');
       final providers = await widget.relay.getProviders();
-      debugPrint('Visualizer: Loaded ${providers.length} providers.');
+      _log.i('Visualizer: Loaded ${providers.length} providers.');
       
-      debugPrint('Visualizer: Loading files...');
+      _log.i('Visualizer: Loading files...');
       final files = await widget.relay.listFiles();
-      debugPrint('Visualizer: Loaded ${files.length} files.');
+      _log.i('Visualizer: Loaded ${files.length} files.');
       
       final List<Map<String, dynamic>> data = [];
       
       for (var f in files.take(10)) {
-        debugPrint('Visualizer: Fetching map for ${f['file_id']}...');
+        _log.d('Visualizer: Fetching map for ${f['file_id']}...');
         final map = await widget.relay.getFileMap(f['file_id']);
         for (var chunk in map['chunks'] ?? []) {
           for (var shard in chunk['shards'] ?? []) {
@@ -54,9 +56,9 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
         _providers = providers;
         _loading = false;
       });
-      debugPrint('Visualizer: Load complete.');
+      _log.i('Visualizer: Load complete.');
     } catch (e, s) {
-      debugPrint('Visualizer ERROR: $e\n$s');
+      _log.e('Visualizer ERROR', error: e, stackTrace: s);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load visualizer: $e')));
         setState(() => _loading = false);
