@@ -23,15 +23,21 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
 
   Future<void> _loadData() async {
     try {
+      debugPrint('Visualizer: Loading providers...');
       final providers = await widget.relay.getProviders();
+      debugPrint('Visualizer: Loaded ${providers.length} providers.');
+      
+      debugPrint('Visualizer: Loading files...');
       final files = await widget.relay.listFiles();
+      debugPrint('Visualizer: Loaded ${files.length} files.');
       
       final List<Map<String, dynamic>> data = [];
       
       for (var f in files.take(10)) {
+        debugPrint('Visualizer: Fetching map for ${f['file_id']}...');
         final map = await widget.relay.getFileMap(f['file_id']);
-        for (var chunk in map['chunks']) {
-          for (var shard in chunk['shards']) {
+        for (var chunk in map['chunks'] ?? []) {
+          for (var shard in chunk['shards'] ?? []) {
             final location = shard['location'] as String;
             final providerName = location.split(':').first;
             data.add({
@@ -48,9 +54,12 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
         _providers = providers;
         _loading = false;
       });
-    } catch (e) {
+      debugPrint('Visualizer: Load complete.');
+    } catch (e, s) {
+      debugPrint('Visualizer ERROR: $e\n$s');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load visualizer: $e')));
+        setState(() => _loading = false);
       }
     }
   }
