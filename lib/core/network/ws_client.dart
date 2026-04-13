@@ -62,7 +62,8 @@ class WsClient {
       );
     } catch (_) {
       if (!_disposed) Future.delayed(_retryDelay, connect);
-      _retryDelay = (_retryDelay * 2).clamp(const Duration(seconds: 3), const Duration(seconds: 30)); // exponential backoff
+      final nextDelay = _retryDelay * 2;
+      _retryDelay = nextDelay > const Duration(seconds: 30) ? const Duration(seconds: 30) : (nextDelay < const Duration(seconds: 3) ? const Duration(seconds: 3) : nextDelay);
     }
   }
 

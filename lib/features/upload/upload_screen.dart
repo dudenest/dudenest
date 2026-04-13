@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../core/network/relay_client.dart';
+import '../../main.dart';
 
 class _UploadJob {
   final String name;

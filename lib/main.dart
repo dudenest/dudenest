@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'core/auth/auth_service.dart';
@@ -163,7 +164,7 @@ class SettingsScreen extends StatelessWidget {
         const Divider(),
         const ListTile(title: Text('Storage', style: TextStyle(fontWeight: FontWeight.bold))),
         ListTile(
-          leading: const Icon(Icons.SdStorage),
+          leading: const Icon(Icons.sd_storage),
           title: const Text('Storage Strategy'),
           subtitle: Text(app.storageStrategy == 'Replica' ? 'Main + 2 Backups' : 'Chunking + Erasure Coding'),
           trailing: SegmentedButton<String>(
