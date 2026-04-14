@@ -75,12 +75,20 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Storage Quota distribution', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Storage Visualizer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text('Storage Quota distribution', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 16),
           SizedBox(
             height: 200,
             child: _providers.isEmpty 
-              ? const Center(child: Text('No accounts'))
+              ? const Center(child: Text('No accounts found. Refresh to retry.'))
               : PieChart(
                   PieChartData(
                     sections: _providers.map((p) {
@@ -97,7 +105,7 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
                 ),
           ),
           const SizedBox(height: 32),
-          const Text('Data mapping (Bytes per Provider)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('Data mapping (Bytes per Provider)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 16),
           if (_mappingData.isNotEmpty)
             SizedBox(
@@ -125,7 +133,13 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
                 ),
               ),
             ),
-          if (_mappingData.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('No file mapping data available'))),
+          if (_mappingData.isEmpty) 
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32), 
+                child: Text('No file mapping data available. Please refresh or upload files.')
+              )
+            ),
         ],
       ),
     );
