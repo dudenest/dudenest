@@ -42,9 +42,8 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
           final map = await widget.relay.getFileMap(f['file_id']);
           for (var chunk in map['chunks'] ?? []) {
             for (var shard in chunk['shards'] ?? []) {
-              final location = shard['location'] as String;
-              final providerName = location.split(':').first;
-              data.add({'file': f['name'], 'provider': providerName, 'size': (shard['size'] as num).toDouble()});
+              final location = shard['location'] as String;  // full: "gdrive:email@gmail.com"
+              data.add({'file': f['name'], 'location': location, 'size': (shard['size'] as num).toDouble()});
             }
           }
         } catch (mapErr) {
@@ -89,9 +88,11 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
                   PieChartData(
                     sections: _providers.map((p) {
                       final used = (p['quota_used_gb'] as num?)?.toDouble() ?? 0.1;
+                      final email = (p['email'] as String?) ?? (p['type'] as String? ?? 'unknown');
+                      final label = email.contains('@') ? email.split('@').first : email;
                       return PieChartSectionData(
                         value: used,
-                        title: '${p['type']}\n${used.toStringAsFixed(1)}GB',
+                        title: '$label\n${used.toStringAsFixed(1)}GB',
                         radius: 60,
                         color: Colors.primaries[_providers.indexOf(p) % Colors.primaries.length],
                         titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
@@ -117,10 +118,13 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
                         showTitles: true,
                         getTitlesWidget: (value, meta) {
                           final idx = value.toInt();
-                          if (idx < 0 || idx >= _providers.length) return const Text('');
+                          final keys = _providerLabels.keys.toList();
+                          if (idx < 0 || idx >= keys.length) return const Text('');
+                          final label = keys[idx];
+                          final short = label.contains('@') ? label.split('@').first : label;
                           return Padding(
                             padding: const EdgeInsets.only(top: 8.0),
-                            child: Text(_providers[idx]['type'] ?? '?', style: const TextStyle(fontSize: 10)),
+                            child: Text(short, style: const TextStyle(fontSize: 10)),
                           );
                         },
                       ),
@@ -141,25 +145,32 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
     );
   }
 
-  List<BarChartGroupData> _buildBarGroups() {
-    final Map<String, double> providerSizes = {};
+  // Maps account email → total shard bytes; used by bar chart and labels
+  // location format from Relay: "gdrive:email@gmail.com" → split on ':' to get email
+  Map<String, double> get _providerLabels {
+    final map = <String, double>{};
     for (var p in _providers) {
-      providerSizes[p['type'] ?? 'unknown'] = 0;
+      final key = (p['email'] as String?) ?? (p['id'] as String?) ?? (p['type'] as String? ?? 'unknown');
+      map[key] = 0;
     }
-    
     for (var d in _mappingData) {
-      final p = d['provider'] as String;
-      providerSizes[p] = (providerSizes[p] ?? 0) + (d['size'] as double);
+      final loc = d['location'] as String? ?? '';
+      final email = loc.contains(':') ? loc.split(':').last : loc;
+      map[email] = (map[email] ?? 0) + (d['size'] as double);
     }
+    return map;
+  }
 
+  List<BarChartGroupData> _buildBarGroups() {
+    final sizes = _providerLabels;
     final List<BarChartGroupData> groups = [];
     int i = 0;
-    providerSizes.forEach((provider, size) {
+    sizes.forEach((_, size) {
       groups.add(BarChartGroupData(
         x: i++,
         barRods: [
           BarChartRodData(
-            toY: size / (1024 * 1024), // Show in MB
+            toY: size / (1024 * 1024), // MB
             color: Colors.blueAccent,
             width: 20,
             borderRadius: BorderRadius.circular(4),
