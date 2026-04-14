@@ -28,34 +28,30 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
       _log.i('Visualizer: Loading providers...');
       final providers = await widget.relay.getProviders();
       _log.i('Visualizer: Loaded ${providers.length} providers.');
-      
+      // Set providers immediately so accounts chart always renders
+      if (mounted) setState(() { _providers = providers; });
+
       _log.i('Visualizer: Loading files...');
       final files = await widget.relay.listFiles();
       _log.i('Visualizer: Loaded ${files.length} files.');
-      
+
       final List<Map<String, dynamic>> data = [];
-      
       for (var f in files.take(10)) {
         _log.d('Visualizer: Fetching map for ${f['file_id']}...');
-        final map = await widget.relay.getFileMap(f['file_id']);
-        for (var chunk in map['chunks'] ?? []) {
-          for (var shard in chunk['shards'] ?? []) {
-            final location = shard['location'] as String;
-            final providerName = location.split(':').first;
-            data.add({
-              'file': f['name'],
-              'provider': providerName,
-              'size': (shard['size'] as num).toDouble(),
-            });
+        try {
+          final map = await widget.relay.getFileMap(f['file_id']);
+          for (var chunk in map['chunks'] ?? []) {
+            for (var shard in chunk['shards'] ?? []) {
+              final location = shard['location'] as String;
+              final providerName = location.split(':').first;
+              data.add({'file': f['name'], 'provider': providerName, 'size': (shard['size'] as num).toDouble()});
+            }
           }
+        } catch (mapErr) {
+          _log.w('Visualizer: skip map for ${f['file_id']}: $mapErr'); // non-fatal
         }
       }
-
-      setState(() {
-        _mappingData = data;
-        _providers = providers;
-        _loading = false;
-      });
+      if (mounted) setState(() { _mappingData = data; _loading = false; });
       _log.i('Visualizer: Load complete.');
     } catch (e, s) {
       _log.e('Visualizer ERROR', error: e, stackTrace: s);
