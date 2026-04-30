@@ -78,17 +78,38 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0; // 0=Files, 1=Upload, 2=Settings
-  // Relay URL — Cloudflare Tunnel (relay-poc → relay.dudenest.com)
-  // Dev: http://localhost:8086 (ssh -L 8086:192.168.0.119:8086 root@10.51.1.101)
-  static const _relayUrl = 'https://relay.dudenest.com';
-  final _relay = RelayClient(_relayUrl);
+  static const _defaultRelayUrl = 'https://relay.dudenest.com';
+  late RelayClient _relay;
+  late String _relayUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _relayUrl = _defaultRelayUrl;
+    _relay = RelayClient(_relayUrl);
+    _loadRelayUrl();
+  }
+
+  Future<void> _loadRelayUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('relay_url') ?? _defaultRelayUrl;
+    if (saved != _relayUrl && mounted) {
+      setState(() { _relayUrl = saved; _relay = RelayClient(saved); });
+    }
+  }
+
+  void setRelayUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('relay_url', url);
+    if (mounted) setState(() { _relayUrl = url; _relay = RelayClient(url); });
+  }
 
   @override
   Widget build(BuildContext context) {
     final screens = [
       RelayScreen(relay: _relay),
       UploadScreen(relay: _relay),
-      SettingsScreen(relay: _relay),
+      SettingsScreen(relay: _relay, relayUrl: _relayUrl, onRelayUrlChanged: setRelayUrl),
     ];
     return Scaffold(
       body: screens[_tab],
@@ -107,7 +128,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class SettingsScreen extends StatelessWidget {
   final RelayClient relay;
-  const SettingsScreen({super.key, required this.relay});
+  final String relayUrl;
+  final void Function(String) onRelayUrlChanged;
+  const SettingsScreen({super.key, required this.relay, required this.relayUrl, required this.onRelayUrlChanged});
   @override
   Widget build(BuildContext context) {
     final app = DudenestApp.of(context);
@@ -160,6 +183,29 @@ class SettingsScreen extends StatelessWidget {
           leading: const Icon(Icons.dark_mode),
           title: const Text('Dark'),
           onTap: () => app.setThemeMode(ThemeMode.dark),
+        ),
+        const Divider(),
+        const ListTile(title: Text('Relay', style: TextStyle(fontWeight: FontWeight.bold))),
+        ListTile(
+          leading: const Icon(Icons.router),
+          title: const Text('Relay URL'),
+          subtitle: Text(relayUrl, style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+          trailing: const Icon(Icons.edit),
+          onTap: () async {
+            final ctrl = TextEditingController(text: relayUrl);
+            final result = await showDialog<String>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Set Relay URL'),
+                content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'https://relay.dudenest.com')),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                  TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save')),
+                ],
+              ),
+            );
+            if (result != null && result.isNotEmpty) onRelayUrlChanged(result);
+          },
         ),
         const Divider(),
         const ListTile(title: Text('Storage', style: TextStyle(fontWeight: FontWeight.bold))),
