@@ -8,6 +8,7 @@ import 'features/auth/login_screen.dart';
 import 'features/storage_accounts/accounts_screen.dart';
 import 'features/upload/upload_screen.dart';
 import 'features/relay/relay_screen.dart';
+import 'features/relay/relay_management_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -230,6 +231,16 @@ class SettingsScreen extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay)),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.backup_outlined),
+          title: const Text('My Relays & Backups'),
+          subtitle: const Text('View registered relays and backup status'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const RelayManagementScreen()),
           ),
         ),
         const Divider(),
