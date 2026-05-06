@@ -138,6 +138,75 @@ The landing page was created in January 2026 and establishes the Dudenest brand:
 - Theme: eco-friendly infinite cloud storage, bird nest metaphor
 - Mascot concept: "The Dude" — tech-hermit bird with sunglasses
 
+## Authentication: JWT Bearer Flow
+
+```
+SECRETS & KEYS
+──────────────
+JWT_SECRET (shared)
+├── dudenest-backend  → signs JWT tokens (HS256)
+└── dudenest-relay    → validates JWT, reads claims.Sub
+
+RELAY_KEY (per relay, private)
+└── encrypts blocks in GDrive (AES-256-GCM, HKDF-derived)
+
+RELAY_ID + RELAY_SECRET (per relay, post-registration)
+└── authenticates relay↔backup (X-Relay-ID, X-Relay-Secret headers)
+
+═══════════════════════════════════════════════════════════════
+
+User A                          User B
+  │                               │
+  │  POST /auth/login             │
+  ▼                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  dudenest-backend                           │
+│  - verifies email/password                                  │
+│  - JWT_A = sign({Sub:"userID_A", Email:"a@..."}, JWT_SECRET)│
+│  - JWT_B = sign({Sub:"userID_B", Email:"b@..."}, JWT_SECRET)│
+│  - each user gets own JWT (unique Sub = user_id)            │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ JWT_SECRET (HS256)
+          ┌────────────────┴─────────────────┐
+          │                                  │
+          ▼                                  ▼
+    JWT_A bearer                        JWT_B bearer
+          │                                  │
+          ▼                                  ▼
+┌───────────────────────────────────────────────────────────────┐
+│               dudenest-relay (shared, one or many)            │
+│                                                               │
+│  requireAuthWithReg():                                        │
+│    1. Validate JWT using JWT_SECRET                           │
+│    2. Extract claims.Sub → user_id                            │
+│    3. lazyRegistrar.tryRegister(user_id)  (sync.Once)         │
+│       POST backup.url/relay/register {user_id, relay_version} │
+│       → relay receives RELAY_ID + RELAY_SECRET                │
+│       → backup.Client activated                               │
+│    4. Access /files/* → pipeline → GDrive                    │
+│                                                               │
+│  Note: relay is SHARED across users                           │
+│  Data isolation = different GDrive accounts (different OAuth) │
+│  One relay → one relay_id → one backup slot                  │
+│  tryRegister: sync.Once → registers relay with user_id of    │
+│  the FIRST user who connects                                  │
+└──────────────────────────┬────────────────────────────────────┘
+                           │ RELAY_ID + RELAY_SECRET
+                           │ (from registration, via env vars)
+                           ▼
+┌───────────────────────────────────────────────────────────────┐
+│              dudenest-backup                                  │
+│  - stores relay state snapshots per relay_id                  │
+│  - verifies X-Relay-ID + X-Relay-Secret                       │
+│  - user_id (from registration) → links relay to user account  │
+│  - GET /api/v1/relays (via backend proxy) → user's relay list │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Key facts**:
+- Every authenticated user gets their own JWT with unique `Sub` (user_id). JWT is NOT shared.
+- The relay IS shared — one relay can serve multiple users. It registers with backup using the `user_id` of the first user who sends a JWT request (`sync.Once`). Data isolation = separate GDrive OAuth tokens per user.
+
 ---
 
 **Author**: Dariusz Porczyński
