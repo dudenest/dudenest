@@ -87,14 +87,20 @@ class _AccountsScreenState extends State<AccountsScreen> {
           final p = _providers[i];
           final used = (p['quota_used_gb'] as num?)?.toStringAsFixed(1) ?? '?';
           final total = (p['quota_total_gb'] as num?)?.toStringAsFixed(1) ?? '?';
+          final fileCount = (p['file_count'] as num?)?.toInt() ?? 0;
           final available = p['available'] == true;
           final errMsg = (p['last_error'] ?? p['error']) as String? ?? 'Token expired — tap to reconnect';
+          final fileCountLabel = fileCount > 0 ? '$fileCount files' : 'no files';
+          final offlineLabel = fileCount > 0 ? '$fileCount files (last seen)' : 'no files';
           return ListTile(
             leading: _providerIcon(p['type'] as String? ?? 'gdrive', available),
             title: Text(p['email'] ?? p['id'] ?? 'Unknown'),
             subtitle: available
-                ? Text('${p["type"] ?? "gdrive"} · $used GB / $total GB used')
-                : Text(errMsg, style: const TextStyle(color: Colors.red, fontSize: 12), overflow: TextOverflow.ellipsis),
+                ? Text('${p["type"] ?? "gdrive"} · $used / $total GB · $fileCountLabel')
+                : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    Text(errMsg, style: const TextStyle(color: Colors.red, fontSize: 12), overflow: TextOverflow.ellipsis),
+                    Text(offlineLabel, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                  ]),
             trailing: Tooltip(
               message: available ? 'Connected' : 'Unavailable — tap to reconnect',
               child: available
