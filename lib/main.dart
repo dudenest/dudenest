@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -91,12 +93,42 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadRelayUrl();
   }
 
+  // _loadRelayUrl resolves the relay URL for the current user.
+  // Priority order:
+  //   1. API (GET /api/v1/relays) — server-authoritative, per-user, works on any device
+  //   2. SharedPreferences 'relay_url' — local override (dev/custom setups, or API unavailable)
+  //   3. _defaultRelayUrl — hardcoded fallback
+  // This enables automatic per-user relay routing: each account gets its own relay URL
+  // without any manual configuration. relay_url is stored in CRDB during relay registration.
   Future<void> _loadRelayUrl() async {
+    final apiUrl = await _fetchRelayUrlFromApi();
+    if (apiUrl != null && apiUrl.isNotEmpty) {
+      if (mounted) setState(() { _relayUrl = apiUrl; _relay = RelayClient(apiUrl); });
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('relay_url') ?? _defaultRelayUrl;
     if (saved != _relayUrl && mounted) {
       setState(() { _relayUrl = saved; _relay = RelayClient(saved); });
     }
+  }
+
+  // _fetchRelayUrlFromApi calls backend GET /api/v1/relays and returns relay_url of the
+  // first relay registered for the current user. Returns null on error or empty list.
+  Future<String?> _fetchRelayUrlFromApi() async {
+    final token = AuthService().token;
+    if (token == null) return null;
+    try {
+      final resp = await http.get(
+        Uri.parse('https://api.dudenest.com/api/v1/relays'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 5));
+      if (resp.statusCode != 200) return null;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final relays = data['relays'] as List?;
+      if (relays == null || relays.isEmpty) return null;
+      return (relays.first as Map<String, dynamic>)['relay_url'] as String?;
+    } catch (_) { return null; }
   }
 
   void setRelayUrl(String url) async {
