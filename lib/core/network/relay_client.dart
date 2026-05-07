@@ -13,14 +13,16 @@ class RelayException implements Exception {
 }
 
 class RelayClient {
-  final String baseUrl; // e.g. "http://10.71.0.1:8086"
+  final String baseUrl; // e.g. "https://relay.dudenest.com"
+  final String? relayToken; // Layer 3: short-lived HMAC from GET /api/v1/relays, sent as X-Relay-Token
   final http.Client _http;
-  RelayClient(this.baseUrl, {http.Client? client}) : _http = client ?? http.Client();
+  RelayClient(this.baseUrl, {http.Client? client, this.relayToken}) : _http = client ?? http.Client();
 
   Map<String, String> get headers {
     final token = AuthService().token;
     return {
       if (token != null) 'Authorization': 'Bearer $token',
+      if (relayToken != null) 'X-Relay-Token': relayToken!,
     };
   }
 

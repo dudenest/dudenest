@@ -84,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _defaultRelayUrl = 'https://relay.dudenest.com';
   late RelayClient _relay;
   late String _relayUrl;
+  String? _relayToken; // Layer 3: short-lived HMAC from API, kept in memory only (not persisted)
 
   @override
   void initState() {
@@ -93,29 +94,30 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadRelayUrl();
   }
 
-  // _loadRelayUrl resolves the relay URL for the current user.
+  // _loadRelayUrl resolves the relay URL and relay_token for the current user.
   // Priority order:
-  //   1. API (GET /api/v1/relays) — server-authoritative, per-user, works on any device
+  //   1. API (GET /api/v1/relays) — server-authoritative, per-user; returns relay_url + relay_token
   //   2. SharedPreferences 'relay_url' — local override (dev/custom setups, or API unavailable)
-  //   3. _defaultRelayUrl — hardcoded fallback
-  // This enables automatic per-user relay routing: each account gets its own relay URL
-  // without any manual configuration. relay_url is stored in CRDB during relay registration.
+  //   3. _defaultRelayUrl — hardcoded fallback (no relay_token in this case)
   Future<void> _loadRelayUrl() async {
-    final apiUrl = await _fetchRelayUrlFromApi();
-    if (apiUrl != null && apiUrl.isNotEmpty) {
-      if (mounted) setState(() { _relayUrl = apiUrl; _relay = RelayClient(apiUrl); });
+    final info = await _fetchRelayInfoFromApi();
+    if (info != null) {
+      final url = info['relay_url']!;
+      final token = info['relay_token']; // may be null if relay not yet registered
+      if (mounted) setState(() { _relayUrl = url; _relayToken = token; _relay = RelayClient(url, relayToken: token); });
       return;
     }
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('relay_url') ?? _defaultRelayUrl;
     if (saved != _relayUrl && mounted) {
-      setState(() { _relayUrl = saved; _relay = RelayClient(saved); });
+      setState(() { _relayUrl = saved; _relayToken = null; _relay = RelayClient(saved); });
     }
   }
 
-  // _fetchRelayUrlFromApi calls backend GET /api/v1/relays and returns relay_url of the
-  // first relay registered for the current user. Returns null on error or empty list.
-  Future<String?> _fetchRelayUrlFromApi() async {
+  // _fetchRelayInfoFromApi calls backend GET /api/v1/relays and returns relay_url + relay_token
+  // for the first relay registered for the current user. Returns null on error or empty list.
+  // relay_token is a short-lived HMAC (1h) signed by backup using relay_secret — Layer 3 security.
+  Future<Map<String, String?>?> _fetchRelayInfoFromApi() async {
     final token = AuthService().token;
     if (token == null) return null;
     try {
@@ -127,14 +129,18 @@ class _HomeScreenState extends State<HomeScreen> {
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       final relays = data['relays'] as List?;
       if (relays == null || relays.isEmpty) return null;
-      return (relays.first as Map<String, dynamic>)['relay_url'] as String?;
+      final first = relays.first as Map<String, dynamic>;
+      final relayUrl = first['relay_url'] as String?;
+      if (relayUrl == null || relayUrl.isEmpty) return null;
+      return {'relay_url': relayUrl, 'relay_token': first['relay_token'] as String?};
     } catch (_) { return null; }
   }
 
   void setRelayUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('relay_url', url);
-    if (mounted) setState(() { _relayUrl = url; _relay = RelayClient(url); });
+    // Manual relay URL override clears relay_token — user manages this relay directly
+    if (mounted) setState(() { _relayUrl = url; _relayToken = null; _relay = RelayClient(url); });
   }
 
   @override
