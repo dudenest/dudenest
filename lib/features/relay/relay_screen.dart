@@ -328,7 +328,12 @@ class _RelayScreenState extends State<RelayScreen> {
 
   Widget _buildContent() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return _ErrorDisplay(error: _error!, onRetry: _load);
+    if (_error != null) {
+      if (_error is RelayException && (_error as RelayException).statusCode == 503) {
+        return _WelcomeScreen(relay: widget.relay);
+      }
+      return _ErrorDisplay(error: _error!, onRetry: _load);
+    }
     if (_files.isEmpty) return const Center(child: Text('No files yet. Upload something first.'));
     return switch (_viewMode) {
       _ViewMode.grid => _buildGrid(),
@@ -503,6 +508,43 @@ class _ErrorDisplay extends StatelessWidget {
           ],
           const SizedBox(height: 24),
           ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── Welcome / Onboarding Screen (shown on 503 relay standby) ────────────────
+
+class _WelcomeScreen extends StatelessWidget {
+  final RelayClient relay;
+  const _WelcomeScreen({required this.relay});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text('☁️', style: const TextStyle(fontSize: 64)),
+          const SizedBox(height: 24),
+          Text('Welcome to Dudenest!',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          Text(
+            'Your relay is ready.\nConnect a cloud account to start storing files securely.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          FilledButton.icon(
+            icon: const Icon(Icons.cloud_outlined),
+            label: const Text('Add Cloud Account'),
+            onPressed: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay))),
+          ),
         ]),
       ),
     );
