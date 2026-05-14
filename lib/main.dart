@@ -87,13 +87,15 @@ class _HomeScreenState extends State<HomeScreen> {
   late String _relayUrl;
   String? _relayToken; // Layer 3: short-lived HMAC from API, kept in memory only (not persisted)
   Timer? _tokenRefreshTimer; // periodic relay_token refresh (token TTL=1h, refresh every 50min)
+  bool _relayReady = false; // true after first _loadRelayUrl() completes — prevents cold-start 403
 
   @override
   void initState() {
     super.initState();
     _relayUrl = _defaultRelayUrl;
     _relay = RelayClient(_relayUrl);
-    _loadRelayUrl();
+    // Await initial token fetch before rendering RelayScreen to prevent cold-start 403
+    _loadRelayUrl().then((_) { if (mounted) setState(() => _relayReady = true); });
     // Relay token expires after 1 hour — refresh every 50 minutes to prevent 403
     _tokenRefreshTimer = Timer.periodic(const Duration(minutes: 50), (_) => _loadRelayUrl());
   }
@@ -155,6 +157,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading spinner until relay token is ready — prevents cold-start 403 on Files tab
+    if (!_relayReady) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final screens = [
       RelayScreen(relay: _relay),
       UploadScreen(relay: _relay),
