@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -85,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late RelayClient _relay;
   late String _relayUrl;
   String? _relayToken; // Layer 3: short-lived HMAC from API, kept in memory only (not persisted)
+  Timer? _tokenRefreshTimer; // periodic relay_token refresh (token TTL=1h, refresh every 50min)
 
   @override
   void initState() {
@@ -92,6 +94,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _relayUrl = _defaultRelayUrl;
     _relay = RelayClient(_relayUrl);
     _loadRelayUrl();
+    // Relay token expires after 1 hour — refresh every 50 minutes to prevent 403
+    _tokenRefreshTimer = Timer.periodic(const Duration(minutes: 50), (_) => _loadRelayUrl());
+  }
+
+  @override
+  void dispose() {
+    _tokenRefreshTimer?.cancel();
+    super.dispose();
   }
 
   // _loadRelayUrl resolves the relay URL and relay_token for the current user.
@@ -154,7 +164,10 @@ class _HomeScreenState extends State<HomeScreen> {
       body: screens[_tab],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        onDestinationSelected: (i) {
+          if (i == 0 && _tab != 0) _loadRelayUrl(); // refresh relay token when switching to Files tab
+          setState(() => _tab = i);
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.folder), label: 'Files'),
           NavigationDestination(icon: Icon(Icons.upload), label: 'Upload'),
