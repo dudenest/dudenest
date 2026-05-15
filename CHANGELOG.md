@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Per-user relay routing** — app automatically fetches user's relay URL and token from `GET /api/v1/relays`; no manual relay configuration needed
 - **Relay Management screen** — Settings → My Relays & Backups: view registered relays, backup status, relay URL
-- **Storage Strategy toggle** — Settings: switch between Replica (Main + 2 Backups) and Chunking (Erasure Coding) modes; persisted in SharedPreferences
+- **Storage Strategy toggle** — Settings: switch between Replica (Main + 1 Backup) and legacy Chunking modes; persisted in SharedPreferences (Replica is current default)
 - **Storage Visualizer** — Cloud Accounts screen: pie/bar charts of storage usage per Google Drive account (fl_chart)
 - **File count per account** — Cloud Accounts screen shows `file_count` returned by relay
 - **Relay URL override** — Settings: manually set custom relay URL (dev/self-hosted setups)

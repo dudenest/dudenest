@@ -1,10 +1,10 @@
 # Dudenest
 
-![Version](https://img.shields.io/badge/Version-v0.4.1-blue) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![Last Update](https://img.shields.io/badge/Update-2026--04--12-lightgrey)
+[![Version](https://img.shields.io/github/v/release/dudenest/dudenest?color=blue&label=Version)](https://github.com/dudenest/dudenest/releases/latest) [![Release Date](https://img.shields.io/github/release-date/dudenest/dudenest?color=lightgrey&label=Released)](https://github.com/dudenest/dudenest/releases/latest) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
-**Your files. Your blocks. Your cloud.**
+**Your files. Your cloud. Your privacy.**
 
-Dudenest is an open-source photo, video and file storage platform — a privacy-first alternative to Google Photos and Apple Photos. Your files are never stored on our servers. Instead, they are split into encrypted blocks distributed across free cloud accounts you control.
+Dudenest is an open-source photo, video and file storage platform — a privacy-first alternative to Google Photos and Apple Photos. Your files are never stored on our servers. Instead, they are stored as replicas directly on free cloud accounts you control (Google Drive, MEGA, OneDrive, etc.).
 
 ## How It Works
 
@@ -23,9 +23,9 @@ Dudenest is an open-source photo, video and file storage platform — a privacy-
 ```
 
 1. **You see thumbnails** — stored locally on your Relay for instant browsing
-2. **Click a photo** — Relay downloads encrypted blocks from your cloud accounts and decrypts locally
-3. **Upload a file** — split into 5-10 MB encrypted blocks, distributed with Reed-Solomon erasure coding (6+3: lose 3 accounts, still recover everything)
-4. **Zero knowledge** — Dudenest servers never see your files or decryption keys
+2. **Click a photo** — Relay downloads the file from your cloud account (tries Main, falls back to Backup replica)
+3. **Upload a file** — stored as-is on up to 2 of your cloud accounts (1 copy per provider); no encryption at storage level — HTTPS secures the transport
+4. **Privacy-first** — Dudenest servers never see your file content
 
 ## Features
 
@@ -139,40 +139,7 @@ test/
 
 ## Changelog
 
-### v0.4.1 — 2026-04-12 — Maintenance & Release
-- 🚀 **Ecosystem Sync**: Unified versioning across Flutter app, Backend, and Relay.
-- 📦 **GitHub Releases**: Official release of v0.4.1 binaries and source.
-- 🔧 **Relay Recovery**: Service restored on `relay-poc` after `pve101` host crash.
-- 🧹 **Service Cleanup**: Disabled legacy `relay-auth.service` in favor of unified `relay.service`.
-
-### v0.4.0 — 2026-04-11 — Security Hardening + Diagnostics
-- 🔐 **Relay API Security**: Every request to Relay (including `Image.network` for thumbnails and full images) now requires a `Bearer <JWT>` authorization header.
-- 🔧 **RelayClient Hardening**: Improved error handling with `RelayException`. The app now verifies `Content-Type: application/json` before parsing.
-- 🧪 **Automated CI/CD Tests**: Added unit and widget tests for Relay authentication and error states. Integrated `flutter test` into GitHub Actions.
-- 🐛 **UI Overflow Fix**: Fixed `RenderFlex` overflow on `LoginScreen` for smaller screens.
-- 🛠️ **Diagnostic UI**: Added `_ErrorDisplay` widget showing HTTP status codes and response bodies for easier infrastructure debugging.
-
-### v0.3.0 — 2026-04-08 — OAuth E2E + Cloud Accounts
-- 🔐 **OAuth E2E fixed**: `web/auth` callback now uses localStorage (flutter_web_auth_2 v4 new-tab flow)
-- 🔐 **Fixed web/auth MIME**: nginx served file as `application/octet-stream` (download) → now HTML
-- 📱 **Method E**: In-app WebView with JS auto-fill for Google OAuth (Android/iOS/desktop)
-- ☁️ **Multi-account support**: add and manage multiple Google Drive accounts
-- 📊 **Storage stats**: used/total GB bar in Cloud Accounts screen + badge in Files AppBar
-- 🔗 **Social links**: GitHub + Discord icons in login footer; Community section in Settings
-- 🎨 **Brand icons**: `font_awesome_flutter` — GitHub, Discord, YouTube, Facebook, X
-
-### v0.2.1 — 2026-04-07 — Thumbnails + Key Management
-- 🖼️ Thumbnails: `GET /files/{id}/thumbnail` — lazy-generated 200×200 JPEG, GlusterFS cache
-- 🔑 BIP39 mnemonic key management: `relay setup` (generate) + `relay recover` (re-derive)
-- 📧 Email via Resend.com: relay sends encryption key mnemonic to owner on setup
-- 🔧 `relay.service` systemd unit on relay-poc VM
-
-### v0.2.0 — 2026-04-07 — OAuth & UI Milestone
-- 🔐 Google OAuth2 login (end-to-end)
-- 🔐 GitHub OAuth2 login
-- 🌟 Animated starfield login background
-- 🗂️ Files: grid/list/long-names view modes, fullscreen viewer with pinch-to-zoom
-- ☁️ Cloud Accounts: step-by-step add flow (browser screenshot + field fill)
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ## Contributing
 
@@ -184,7 +151,7 @@ Dudenest is open source under Apache 2.0. Contributions welcome!
 
 ## Security
 
-Files are split into 5-10 MB blocks, encrypted with AES-256-GCM, and distributed using Reed-Solomon erasure coding before reaching any cloud provider. The Dudenest backend only sees metadata (filenames, dates, tags) — never file content or encryption keys.
+Files are stored as replicas on your own cloud accounts (Google Drive, MEGA, OneDrive, etc.) — up to 2 copies, each on a different provider. Files go directly from your Relay to your cloud accounts via HTTPS; the Dudenest backend only sees metadata (filenames, dates, tags) — never file content.
 
 Security reports: security@dudenest.com
 
