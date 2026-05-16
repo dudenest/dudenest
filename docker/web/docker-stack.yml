@@ -13,6 +13,13 @@ services:
         - traefik.http.routers.dudenest-web.entrypoints=web
         - traefik.http.services.dudenest-web.loadbalancer.server.port=80
         - traefik.docker.network=PROXY_NETOL_PROD
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://10.51.1.252:12201"
+        tag: "dudenest-web"
+        gelf-compression-type: gzip
+        labels: "com.docker.stack.namespace,com.docker.swarm.service.name"
 
 networks:
   PROXY_NETOL_PROD:
