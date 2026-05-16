@@ -1,6 +1,6 @@
 # Dudenest
 
-[![Version](https://img.shields.io/github/v/release/dudenest/dudenest?color=blue&label=Version)](https://github.com/dudenest/dudenest/releases/latest) [![Release Date](https://img.shields.io/github/release-date/dudenest/dudenest?color=lightgrey&label=Released)](https://github.com/dudenest/dudenest/releases/latest) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
+[![Version](https://img.shields.io/github/v/release/dudenest/dudenest?color=blue&label=Version)](https://github.com/dudenest/dudenest/releases/latest) [![Release Date](https://img.shields.io/github/release-date/dudenest/dudenest?color=lightgrey&label=Released)](https://github.com/dudenest/dudenest/releases/latest) ![Last Update](https://img.shields.io/badge/Update-2026--05--17-orange) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![Logging](https://img.shields.io/badge/Logging-Graylog%20GELF-9cf)
 
 **Your files. Your cloud. Your privacy.**
 
