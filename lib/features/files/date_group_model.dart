@@ -7,7 +7,22 @@ class DateGroup {
 }
 
 class DateGroupModel {
-  // Groups files by date (day granularity) using the 'created' field from API.
+  // Returns the best available date for a file: EXIF taken_at (preferred) or upload created.
+  static DateTime _fileDate(Map<String, dynamic> f) {
+    final takenRaw = f['taken_at'] as String?;
+    if (takenRaw != null) {
+      final t = DateTime.tryParse(takenRaw);
+      if (t != null) return t.toLocal();
+    }
+    final createdRaw = f['created'] as String?;
+    if (createdRaw != null) {
+      final t = DateTime.tryParse(createdRaw);
+      if (t != null) return t.toLocal();
+    }
+    return DateTime.now();
+  }
+
+  // Groups files by date (day granularity). Uses EXIF taken_at when available, falls back to created.
   static List<DateGroup> group(List<Map<String, dynamic>> files) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -15,9 +30,7 @@ class DateGroupModel {
 
     final Map<DateTime, List<Map<String, dynamic>>> buckets = {};
     for (final f in files) {
-      final raw = f['created'] as String?;
-      DateTime dt = raw != null ? DateTime.tryParse(raw) ?? now : now;
-      dt = dt.toLocal();
+      final dt = _fileDate(f);
       final key = DateTime(dt.year, dt.month, dt.day);
       buckets.putIfAbsent(key, () => []).add(f);
     }
@@ -38,14 +51,11 @@ class DateGroupModel {
     }).toList();
   }
 
-  // Groups by month (for scrubbar display).
+  // Groups by month (for scrubbar display). Uses EXIF taken_at when available.
   static List<DateGroup> groupByMonth(List<Map<String, dynamic>> files) {
-    final now = DateTime.now();
     final Map<DateTime, List<Map<String, dynamic>>> buckets = {};
     for (final f in files) {
-      final raw = f['created'] as String?;
-      DateTime dt = raw != null ? DateTime.tryParse(raw) ?? now : now;
-      dt = dt.toLocal();
+      final dt = _fileDate(f);
       final key = DateTime(dt.year, dt.month);
       buckets.putIfAbsent(key, () => []).add(f);
     }
