@@ -96,6 +96,7 @@ class MasonryGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomScrollView(
       controller: scrollController,
+      physics: const ClampingScrollPhysics(),
       slivers: groups.expand((group) {
         return <Widget>[
           if (settings.showDateHeaders)

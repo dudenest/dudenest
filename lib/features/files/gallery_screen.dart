@@ -55,6 +55,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (old.files != widget.files || old.settings.groupByDate != widget.settings.groupByDate) {
       _buildGroups();
     }
+    if (old.settings.viewMode != widget.settings.viewMode) {
+      _groupOffsets.clear();
+      if (_scrollCtrl.hasClients) _scrollCtrl.jumpTo(0);
+    }
   }
 
   void _buildGroups() {
@@ -71,12 +75,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
   @override
   Widget build(BuildContext context) {
     final s = widget.settings;
+    final showScrubbar = s.showDateScrubbar && s.viewMode == GalleryViewMode.justified;
     return Stack(children: [
       Padding(
-        padding: EdgeInsets.only(right: s.showDateScrubbar ? 30 : 0),
+        padding: EdgeInsets.only(right: showScrubbar ? 30 : 0),
         child: _buildContent(s),
       ),
-      if (s.showDateScrubbar && _groups.isNotEmpty)
+      if (showScrubbar && _groups.isNotEmpty)
         Positioned(
           top: 0, bottom: 0, right: 0, width: 30,
           child: DateScrubbar(
