@@ -3,8 +3,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/network/relay_client.dart';
 import '../../core/auth/web_utils.dart';
 import '../storage_accounts/accounts_screen.dart';
+import '../files/gallery_screen.dart';
+import '../files/gallery_settings.dart';
 
-enum _ViewMode { grid, list, longNames }
+enum _ViewMode { gallery, list, longNames }
 
 class RelayScreen extends StatefulWidget {
   final RelayClient relay;
@@ -17,11 +19,18 @@ class _RelayScreenState extends State<RelayScreen> {
   List<Map<String, dynamic>> _files = [];
   bool _loading = true;
   Object? _error;
-  _ViewMode _viewMode = _ViewMode.grid;
+  _ViewMode _viewMode = _ViewMode.gallery;
   double? _storageUsedGb;
   double? _storageTotalGb;
   final Set<String> _selected = {};
   bool get _selectionMode => _selected.isNotEmpty;
+  GallerySettings _gallerySettings = GallerySettings();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    GallerySettings.load().then((s) { if (mounted) setState(() => _gallerySettings = s); });
+  }
 
   static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif'};  // svg excluded: no native decode in Flutter web
   static const _videoExts = {'mp4','mov','avi','mkv','webm','m4v','3gp'};
@@ -213,57 +222,18 @@ class _RelayScreenState extends State<RelayScreen> {
     }
   }
 
-  // ─── Thumbnail grid: tiles flush, 1px separator line, no names ─────────────
-  Widget _buildGrid() => GridView.builder(
-    padding: EdgeInsets.zero,
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: 3, mainAxisSpacing: 1, crossAxisSpacing: 1,
-    ),
-    itemCount: _files.length,
-    itemBuilder: (ctx, i) {
-      final f = _files[i];
-      final id = f['file_id'] as String? ?? '';
-      final name = f['name'] as String? ?? id;
-      final isImg = _isImage(name);
-      final isSelected = _selected.contains(id);
-      return GestureDetector(
-        onTap: () => _selectionMode ? _toggleSelect(id) : _openFile(ctx, id, name),
-        onLongPress: () => _toggleSelect(id),  // enter selection mode
-        child: Stack(fit: StackFit.expand, children: [
-          // Content
-          isImg
-              ? Image.network('${widget.relay.baseUrl}/files/$id/thumbnail',
-                  headers: widget.relay.headers,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0D1117),
-                      child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040)))),
-                  loadingBuilder: (_, child, p) => p == null ? child
-                      : Container(color: const Color(0xFF0D1117),
-                          child: const Center(child: CircularProgressIndicator(strokeWidth: 1))),
-                )
-              : Container(color: const Color(0xFF111827),
-                  child: Center(child: Icon(_fileIcon(name), size: 36, color: const Color(0xFF6080A0)))),
-          // Selection overlay (only in selection mode)
-          if (_selectionMode) AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            color: isSelected ? Colors.black54 : Colors.black26,
-            child: isSelected
-                ? const Center(child: Icon(Icons.check_circle, color: Colors.white, size: 36))
-                : Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: Align(alignment: Alignment.topRight,
-                      child: Container(width: 22, height: 22,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white70, width: 2),
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
-        ]),
-      );
-    },
+  // ─── Gallery view: wraps GalleryScreen (Justified/Masonry/Square/List) ──────
+  Widget _buildGallery() => GalleryScreen(
+    files: _files,
+    relay: widget.relay,
+    settings: _gallerySettings,
+    selected: _selected,
+    selectionMode: _selectionMode,
+    onOpen: (id, name) => _openFile(context, id, name),
+    onToggleSelect: _toggleSelect,
+    isImage: _isImage,
+    isVideo: _isVideo,
+    fileIcon: _fileIcon,
   );
 
   // ─── List view ──────────────────────────────────────────────────────────────
@@ -314,12 +284,12 @@ class _RelayScreenState extends State<RelayScreen> {
   );
 
   IconData _modeIcon(_ViewMode m) => switch (m) {
-    _ViewMode.grid => Icons.grid_view,
+    _ViewMode.gallery => Icons.photo_library_outlined,
     _ViewMode.list => Icons.list,
     _ViewMode.longNames => Icons.text_snippet,
   };
   String _modeLabel(_ViewMode m) => switch (m) {
-    _ViewMode.grid => 'Thumbnails',
+    _ViewMode.gallery => 'Gallery',
     _ViewMode.list => 'List',
     _ViewMode.longNames => 'Long names',
   };
@@ -336,7 +306,7 @@ class _RelayScreenState extends State<RelayScreen> {
     }
     if (_files.isEmpty) return const Center(child: Text('No files yet. Upload something first.'));
     return switch (_viewMode) {
-      _ViewMode.grid => _buildGrid(),
+      _ViewMode.gallery => _buildGallery(),
       _ViewMode.list => _buildList(),
       _ViewMode.longNames => _buildLongNames(),
     };

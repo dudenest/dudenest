@@ -12,6 +12,7 @@ import 'features/storage_accounts/accounts_screen.dart';
 import 'features/upload/upload_screen.dart';
 import 'features/relay/relay_screen.dart';
 import 'features/relay/relay_management_screen.dart';
+import 'features/files/gallery_settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -299,6 +300,9 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
         const Divider(),
+        const ListTile(title: Text('Files View', style: TextStyle(fontWeight: FontWeight.bold))),
+        _GallerySettingsTile(),
+        const Divider(),
         const ListTile(title: Text('Community', style: TextStyle(fontWeight: FontWeight.bold))),
         _SocialLinkTile(icon: FontAwesomeIcons.github, color: const Color(0xFF24292e),
             label: 'GitHub', subtitle: 'Source code', url: 'https://github.com/dudenest/dudenest'),
@@ -312,6 +316,103 @@ class SettingsScreen extends StatelessWidget {
             label: 'X / Twitter', subtitle: 'Updates — coming soon'),
       ]),
     );
+  }
+}
+
+// ─── Gallery Settings Tile ────────────────────────────────────────────────────
+
+class _GallerySettingsTile extends StatefulWidget {
+  @override
+  State<_GallerySettingsTile> createState() => _GallerySettingsTileState();
+}
+
+class _GallerySettingsTileState extends State<_GallerySettingsTile> {
+  GallerySettings? _s;
+
+  @override
+  void initState() {
+    super.initState();
+    GallerySettings.load().then((s) { if (mounted) setState(() => _s = s); });
+  }
+
+  Future<void> _save() async {
+    await _s?.save();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_s == null) return const SizedBox.shrink();
+    final s = _s!;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // View mode
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Text('View mode', style: Theme.of(context).textTheme.bodySmall),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: SegmentedButton<GalleryViewMode>(
+          segments: const [
+            ButtonSegment(value: GalleryViewMode.justified, label: Text('Justified'), icon: Icon(Icons.view_agenda_outlined)),
+            ButtonSegment(value: GalleryViewMode.masonry, label: Text('Masonry'), icon: Icon(Icons.dashboard_outlined)),
+            ButtonSegment(value: GalleryViewMode.square, label: Text('Square'), icon: Icon(Icons.grid_view)),
+            ButtonSegment(value: GalleryViewMode.list, label: Text('List'), icon: Icon(Icons.list)),
+          ],
+          selected: {s.viewMode},
+          onSelectionChanged: (v) { s.viewMode = v.first; _save(); },
+        ),
+      ),
+      // Row height (justified only)
+      if (s.viewMode == GalleryViewMode.justified) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Row(children: [
+            Text('Row height: ${s.justifiedRowHeight.round()}px',
+                style: Theme.of(context).textTheme.bodySmall),
+          ]),
+        ),
+        Slider(
+          value: s.justifiedRowHeight,
+          min: 100, max: 320, divisions: 11,
+          label: '${s.justifiedRowHeight.round()}px',
+          onChanged: (v) { s.justifiedRowHeight = v; _save(); },
+        ),
+      ],
+      // Masonry columns
+      if (s.viewMode == GalleryViewMode.masonry)
+        ListTile(
+          dense: true,
+          title: const Text('Columns'),
+          trailing: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 2, label: Text('2')),
+              ButtonSegment(value: 3, label: Text('3')),
+            ],
+            selected: {s.masonryColumns},
+            onSelectionChanged: (v) { s.masonryColumns = v.first; _save(); },
+          ),
+        ),
+      // Toggles
+      SwitchListTile(
+        dense: true,
+        title: const Text('Group by date'),
+        value: s.groupByDate,
+        onChanged: (v) { s.groupByDate = v; _save(); },
+      ),
+      SwitchListTile(
+        dense: true,
+        title: const Text('Show date headers'),
+        value: s.showDateHeaders,
+        onChanged: s.groupByDate ? (v) { s.showDateHeaders = v; _save(); } : null,
+      ),
+      SwitchListTile(
+        dense: true,
+        title: const Text('Date scrubbar (right side)'),
+        value: s.showDateScrubbar,
+        onChanged: s.groupByDate ? (v) { s.showDateScrubbar = v; _save(); } : null,
+      ),
+    ]);
   }
 }
 
