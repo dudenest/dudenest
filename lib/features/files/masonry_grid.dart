@@ -16,6 +16,7 @@ class MasonryGrid extends StatelessWidget {
   final Set<String> selected;
   final bool selectionMode;
   final bool Function(String name) isImage;
+  final bool Function(String name) isVideo;
   final IconData Function(String name) fileIcon;
 
   const MasonryGrid({
@@ -30,6 +31,7 @@ class MasonryGrid extends StatelessWidget {
     required this.selected,
     required this.selectionMode,
     required this.isImage,
+    required this.isVideo,
     required this.fileIcon,
   });
 
@@ -51,7 +53,7 @@ class MasonryGrid extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4),
         child: Stack(fit: StackFit.expand, children: [
-          isImage(name)
+          (isImage(name) || isVideo(name))
               ? Image.network(
                   '${relay.baseUrl}/files/$id/thumbnail',
                   headers: relay.headers,
@@ -68,6 +70,9 @@ class MasonryGrid extends StatelessWidget {
                   color: const Color(0xFF111827),
                   child: Center(child: Icon(fileIcon(name), size: 36, color: const Color(0xFF6080A0))),
                 ),
+          if (isVideo(name))
+            const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 36,
+                shadows: [Shadow(color: Colors.black54, blurRadius: 8)])),
           if (selectionMode) AnimatedContainer(
             duration: const Duration(milliseconds: 120),
             color: isSelected ? Colors.black54 : Colors.black26,

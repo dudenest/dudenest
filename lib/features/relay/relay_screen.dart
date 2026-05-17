@@ -304,6 +304,12 @@ class _RelayScreenState extends State<RelayScreen> {
     _ViewMode.list => 'List',
     _ViewMode.longNames => 'Long names',
   };
+  IconData _galleryLayoutIcon(GalleryViewMode m) => switch (m) {
+    GalleryViewMode.justified => Icons.view_agenda_outlined,
+    GalleryViewMode.masonry => Icons.dashboard_outlined,
+    GalleryViewMode.square => Icons.grid_on,
+    GalleryViewMode.list => Icons.list,
+  };
 
   static const _kVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
 
@@ -375,6 +381,33 @@ class _RelayScreenState extends State<RelayScreen> {
                 icon: Icon(_modeIcon(mode), color: _viewMode == mode ? scheme.primary : null),
                 tooltip: _modeLabel(mode),
                 onPressed: () => setState(() => _viewMode = mode),
+              ),
+            if (_viewMode == _ViewMode.gallery)
+              PopupMenuButton<GalleryViewMode>(
+                icon: Icon(_galleryLayoutIcon(_gallerySettings.viewMode)),
+                tooltip: 'Gallery layout',
+                onSelected: (mode) async {
+                  final ns = GallerySettings(
+                    viewMode: mode,
+                    justifiedRowHeight: _gallerySettings.justifiedRowHeight,
+                    masonryColumns: _gallerySettings.masonryColumns,
+                    groupByDate: _gallerySettings.groupByDate,
+                    showDateHeaders: _gallerySettings.showDateHeaders,
+                    showDateScrubbar: _gallerySettings.showDateScrubbar,
+                  );
+                  await ns.save();
+                  if (mounted) setState(() => _gallerySettings = ns);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: GalleryViewMode.justified, child: ListTile(
+                    leading: Icon(Icons.view_agenda_outlined), title: Text('Justified'), dense: true)),
+                  PopupMenuItem(value: GalleryViewMode.masonry, child: ListTile(
+                    leading: Icon(Icons.dashboard_outlined), title: Text('Masonry'), dense: true)),
+                  PopupMenuItem(value: GalleryViewMode.square, child: ListTile(
+                    leading: Icon(Icons.grid_on), title: Text('Square grid'), dense: true)),
+                  PopupMenuItem(value: GalleryViewMode.list, child: ListTile(
+                    leading: Icon(Icons.list), title: Text('List'), dense: true)),
+                ],
               ),
             IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Refresh'),
           ],

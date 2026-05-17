@@ -2,18 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/auth/auth_service.dart';
 import '../../core/auth/web_utils.dart';
 import '../../core/network/relay_client.dart';
 import 'video_player_widget.dart';
 
-// MediaViewer: fullscreen viewer with progressive image loading (thumb→preview→original),
-// inline video playback, left/right swipe navigation, transparent overlay, and info panel.
+// MediaViewer: fullscreen viewer — progressive image loading, inline video, swipe/keyboard nav, overlay, info panel.
 class MediaViewer extends StatefulWidget {
-  final List<Map<String, dynamic>> files; // all files in display order (for navigation)
+  final List<Map<String, dynamic>> files;
   final int initialIndex;
   final RelayClient relay;
-  final VoidCallback? onDelete; // called after deletion so parent can refresh
+  final VoidCallback? onDelete;
 
   const MediaViewer({
     super.key,
@@ -38,6 +38,11 @@ class _MediaViewerState extends State<MediaViewer> with TickerProviderStateMixin
   static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif'};
   static const _videoExts = {'mp4','mov','avi','mkv','webm','m4v','3gp','wmv','flv'};
 
+  bool _isImage(String name) => _imageExts.contains(name.split('.').last.toLowerCase());
+  bool _isVideo(String name) => _videoExts.contains(name.split('.').last.toLowerCase());
+
+  bool get _curIsVideo => _isVideo(_curName);
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +63,9 @@ class _MediaViewerState extends State<MediaViewer> with TickerProviderStateMixin
 
   void _scheduleOverlayHide() {
     _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(seconds: 4), () {
+    // Videos: 8s before hide (mouse movement resets via MouseRegion); images: 4s
+    final delay = _curIsVideo ? const Duration(seconds: 8) : const Duration(seconds: 4);
+    _overlayTimer = Timer(delay, () {
       if (mounted && _overlayVisible) _hideOverlay();
     });
   }
@@ -76,6 +83,26 @@ class _MediaViewerState extends State<MediaViewer> with TickerProviderStateMixin
 
   void _toggleOverlay() => _overlayVisible ? _hideOverlay() : _showOverlay();
 
+  void _prevPage() {
+    if (_currentIndex > 0) {
+      _pageCtrl.previousPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    }
+  }
+
+  void _nextPage() {
+    if (_currentIndex < widget.files.length - 1) {
+      _pageCtrl.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    }
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) { _nextPage(); _showOverlay(); return KeyEventResult.handled; }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft)  { _prevPage(); _showOverlay(); return KeyEventResult.handled; }
+    if (event.logicalKey == LogicalKeyboardKey.escape)     { Navigator.pop(context); return KeyEventResult.handled; }
+    return KeyEventResult.ignored;
+  }
+
   void _preloadNeighbors(int index) {
     for (final offset in [-1, 1]) {
       final i = index + offset;
@@ -92,9 +119,6 @@ class _MediaViewerState extends State<MediaViewer> with TickerProviderStateMixin
   Map<String, dynamic> get _cur => widget.files[_currentIndex];
   String get _curId => _cur['file_id'] as String? ?? '';
   String get _curName => _cur['name'] as String? ?? _curId;
-
-  bool _isImage(String name) => _imageExts.contains(name.split('.').last.toLowerCase());
-  bool _isVideo(String name) => _videoExts.contains(name.split('.').last.toLowerCase());
 
   // Video URL embeds JWT token as query param — <video> element can't set Authorization header.
   String _videoUrl(String fileId) {
@@ -151,123 +175,146 @@ class _MediaViewerState extends State<MediaViewer> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: _toggleOverlay,
-        child: Stack(children: [
-          PageView.builder(
-            controller: _pageCtrl,
-            itemCount: widget.files.length,
-            onPageChanged: (i) {
-              setState(() { _currentIndex = i; _infoPanelOpen = false; });
-              _showOverlay();
-              _preloadNeighbors(i);
-            },
-            itemBuilder: (ctx, i) {
-              final f = widget.files[i];
-              final id = f['file_id'] as String? ?? '';
-              final name = f['name'] as String? ?? id;
-              if (_isVideo(name)) {
-                return VideoPlayerWidget(videoUrl: _videoUrl(id), headers: widget.relay.headers);
-              }
-              if (_isImage(name)) {
-                return _ProgressiveImage(
-                  key: ValueKey(id),
-                  fileId: id,
-                  relay: widget.relay,
-                  isActive: i == _currentIndex,
-                  lqip: f['lqip'] as String?,
-                );
-              }
-              return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Icon(Icons.insert_drive_file, size: 80, color: Colors.white38),
-                const SizedBox(height: 12),
-                Text(name, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-              ]));
-            },
-          ),
-          // Overlay: fades in/out on tap; IgnorePointer prevents accidental button taps when hidden.
-          AnimatedBuilder(
-            animation: _overlayAnim,
-            builder: (ctx, child) => IgnorePointer(
-              ignoring: _overlayAnim.value < 0.1,
-              child: Opacity(opacity: _overlayAnim.value, child: child),
-            ),
-            child: _buildOverlay(),
-          ),
-          // Info panel: slide in from right
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutCubic,
-            top: 0, bottom: 0,
-            right: _infoPanelOpen ? 0 : -360,
-            width: 320,
-            child: _buildInfoPanel(),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  Widget _buildOverlay() {
-    return Column(children: [
-      // Top gradient bar
-      Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
-          colors: [Color(0xCC000000), Colors.transparent],
-          stops: [0.0, 1.0],
-        )),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Row(children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _onKey,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: MouseRegion(
+          onHover: (_) => _showOverlay(), // show overlay on any mouse movement (including over video)
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _toggleOverlay,
+            child: Stack(children: [
+              PageView.builder(
+                controller: _pageCtrl,
+                itemCount: widget.files.length,
+                onPageChanged: (i) {
+                  setState(() { _currentIndex = i; _infoPanelOpen = false; });
+                  _showOverlay();
+                  _preloadNeighbors(i);
+                },
+                itemBuilder: (ctx, i) {
+                  final f = widget.files[i];
+                  final id = f['file_id'] as String? ?? '';
+                  final name = f['name'] as String? ?? id;
+                  if (_isVideo(name)) {
+                    return VideoPlayerWidget(videoUrl: _videoUrl(id), headers: widget.relay.headers);
+                  }
+                  if (_isImage(name)) {
+                    return _ProgressiveImage(
+                      key: ValueKey(id),
+                      fileId: id,
+                      relay: widget.relay,
+                      isActive: i == _currentIndex,
+                      lqip: f['lqip'] as String?,
+                    );
+                  }
+                  return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const Icon(Icons.insert_drive_file, size: 80, color: Colors.white38),
+                    const SizedBox(height: 12),
+                    Text(name, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                  ]));
+                },
               ),
-              Expanded(child: Text(_curName,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, shadows: [Shadow(blurRadius: 4)]),
-                  overflow: TextOverflow.ellipsis)),
-              IconButton(
-                icon: const Icon(Icons.info_outline, color: Colors.white70),
-                tooltip: 'Info',
-                onPressed: () { setState(() => _infoPanelOpen = !_infoPanelOpen); _showOverlay(); },
+              // Overlay: fades in/out; IgnorePointer prevents button taps when hidden.
+              AnimatedBuilder(
+                animation: _overlayAnim,
+                builder: (ctx, child) => IgnorePointer(
+                  ignoring: _overlayAnim.value < 0.1,
+                  child: Opacity(opacity: _overlayAnim.value, child: child),
+                ),
+                child: _buildOverlay(),
               ),
-              IconButton(
-                icon: const Icon(Icons.download_outlined, color: Colors.white70),
-                tooltip: 'Download',
-                onPressed: _download,
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.white54),
-                tooltip: 'Delete',
-                onPressed: _confirmDelete,
+              // Info panel: slide in from right (always interactive, outside IgnorePointer)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+                top: 0, bottom: 0,
+                right: _infoPanelOpen ? 0 : -360,
+                width: 320,
+                child: _buildInfoPanel(),
               ),
             ]),
           ),
         ),
       ),
-      const Spacer(),
-      // Bottom gradient bar — page indicator
-      Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(
-          begin: Alignment.bottomCenter, end: Alignment.topCenter,
-          colors: [Color(0x88000000), Colors.transparent],
-        )),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Center(child: Text(
-              '${_currentIndex + 1} / ${widget.files.length}',
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-            )),
+    );
+  }
+
+  Widget _buildOverlay() {
+    return Stack(children: [
+      // Top + bottom gradient bars
+      Column(children: [
+        Container(
+          decoration: const BoxDecoration(gradient: LinearGradient(
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            colors: [Color(0xCC000000), Colors.transparent],
+          )),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Row(children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                Expanded(child: Text(_curName,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, shadows: [Shadow(blurRadius: 4)]),
+                    overflow: TextOverflow.ellipsis)),
+                IconButton(
+                  icon: const Icon(Icons.info_outline, color: Colors.white70),
+                  tooltip: 'Info',
+                  onPressed: () { setState(() => _infoPanelOpen = !_infoPanelOpen); _showOverlay(); },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.download, color: Colors.white70),
+                  tooltip: 'Download',
+                  onPressed: _download,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.white54),
+                  tooltip: 'Delete',
+                  onPressed: _confirmDelete,
+                ),
+              ]),
+            ),
           ),
         ),
-      ),
+        const Spacer(),
+        Container(
+          decoration: const BoxDecoration(gradient: LinearGradient(
+            begin: Alignment.bottomCenter, end: Alignment.topCenter,
+            colors: [Color(0x88000000), Colors.transparent],
+          )),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Center(child: Text(
+                '${_currentIndex + 1} / ${widget.files.length}',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              )),
+            ),
+          ),
+        ),
+      ]),
+      // Left nav arrow (prev)
+      if (_currentIndex > 0)
+        Positioned(
+          left: 0, top: 0, bottom: 0, width: 80,
+          child: Center(
+            child: _NavButton(icon: Icons.chevron_left, onTap: _prevPage),
+          ),
+        ),
+      // Right nav arrow (next)
+      if (_currentIndex < widget.files.length - 1)
+        Positioned(
+          right: 0, top: 0, bottom: 0, width: 80,
+          child: Center(
+            child: _NavButton(icon: Icons.chevron_right, onTap: _nextPage),
+          ),
+        ),
     ]);
   }
 
@@ -314,7 +361,25 @@ class _MediaViewerState extends State<MediaViewer> with TickerProviderStateMixin
   );
 }
 
-// ─── Progressive image: thumb → 800px preview → original with 300ms crossfades ──
+// Circular nav button for prev/next arrows
+class _NavButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _NavButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: 44, height: 44,
+      decoration: const BoxDecoration(color: Color(0x66000000), shape: BoxShape.circle),
+      child: Icon(icon, color: Colors.white, size: 28),
+    ),
+  );
+}
+
+// ─── Progressive image: LQIP blur → 800px preview → original with 300ms crossfades ──
+// Layer 0 (LQIP) and loading indicator replaced the square thumbnail — avoids 1:1 artifact.
 class _ProgressiveImage extends StatefulWidget {
   final String fileId;
   final RelayClient relay;
@@ -336,8 +401,28 @@ class _ProgressiveImage extends StatefulWidget {
 class _ProgressiveImageState extends State<_ProgressiveImage> {
   bool _previewLoaded = false;
   bool _originalLoaded = false;
+  final _xformCtrl = TransformationController();
+  bool _zoomed = false;
 
-  String get _thumbUrl => '${widget.relay.baseUrl}/files/${widget.fileId}/thumbnail';
+  @override
+  void initState() {
+    super.initState();
+    _xformCtrl.addListener(_onTransform);
+  }
+
+  void _onTransform() {
+    final s = _xformCtrl.value.getMaxScaleOnAxis();
+    final z = s > 1.05;
+    if (z != _zoomed) setState(() => _zoomed = z);
+  }
+
+  @override
+  void dispose() {
+    _xformCtrl.removeListener(_onTransform);
+    _xformCtrl.dispose();
+    super.dispose();
+  }
+
   String get _previewUrl => '${widget.relay.baseUrl}/files/${widget.fileId}/preview';
   String get _originalUrl => '${widget.relay.baseUrl}/files/${widget.fileId}';
 
@@ -353,17 +438,19 @@ class _ProgressiveImageState extends State<_ProgressiveImage> {
   @override
   Widget build(BuildContext context) {
     final lqipBytes = _lqipBytes();
+    final anyLoaded = _previewLoaded || _originalLoaded;
+    // panEnabled: false at 1x so PageView captures horizontal swipes; true when zoomed to allow panning.
     return InteractiveViewer(
-      minScale: 0.5, maxScale: 8.0,
+      transformationController: _xformCtrl,
+      panEnabled: _zoomed,
+      minScale: 0.8, maxScale: 8.0,
       child: Stack(fit: StackFit.expand, children: [
-        // Layer 0: LQIP blur while thumb loads (tiny, instantly available from file list)
-        if (lqipBytes != null && !_previewLoaded)
-          Image.memory(lqipBytes, fit: BoxFit.contain, gaplessPlayback: true),
-        // Layer 1: thumbnail (200px square, exists immediately after upload)
-        if (!_previewLoaded)
-          Image.network(_thumbUrl, fit: BoxFit.contain, headers: widget.relay.headers,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-        // Layer 2: medium preview (800px, aspect preserved) — crossfade 300ms
+        // Layer 0: placeholder while preview loads — LQIP blur or loading spinner
+        if (!anyLoaded)
+          lqipBytes != null
+              ? Image.memory(lqipBytes, fit: BoxFit.contain, gaplessPlayback: true)
+              : const Center(child: CircularProgressIndicator(color: Colors.white38, strokeWidth: 1.5)),
+        // Layer 1: 800px preview (aspect-ratio-correct) — crossfade 300ms
         AnimatedOpacity(
           opacity: _previewLoaded ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 300),
@@ -378,7 +465,7 @@ class _ProgressiveImageState extends State<_ProgressiveImage> {
               return child;
             },
             errorBuilder: (_, __, ___) {
-              // Preview endpoint not yet deployed — fallback: show thumb only
+              // Preview not available — mark as loaded so spinner disappears, original will show
               if (!_previewLoaded) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) setState(() => _previewLoaded = true);
@@ -387,7 +474,7 @@ class _ProgressiveImageState extends State<_ProgressiveImage> {
               return const SizedBox.shrink();
             }),
         ),
-        // Layer 3: original full resolution — crossfade 300ms, only load for active page
+        // Layer 2: original full resolution — crossfade 300ms, only load for active page
         if (widget.isActive) AnimatedOpacity(
           opacity: _originalLoaded ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 300),

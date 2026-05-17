@@ -104,7 +104,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           scrollController: _scrollCtrl, groupOffsets: _groupOffsets,
           onOpen: widget.onOpen, onToggleSelect: widget.onToggleSelect,
           selected: widget.selected, selectionMode: widget.selectionMode,
-          isImage: widget.isImage, fileIcon: widget.fileIcon,
+          isImage: widget.isImage, isVideo: widget.isVideo, fileIcon: widget.fileIcon,
         );
       case GalleryViewMode.square:
         return _SquareGrid(
@@ -112,7 +112,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           scrollController: _scrollCtrl, groupOffsets: _groupOffsets,
           onOpen: widget.onOpen, onToggleSelect: widget.onToggleSelect,
           selected: widget.selected, selectionMode: widget.selectionMode,
-          isImage: widget.isImage, fileIcon: widget.fileIcon,
+          isImage: widget.isImage, isVideo: widget.isVideo, fileIcon: widget.fileIcon,
         );
       case GalleryViewMode.list:
         return _ListView(
@@ -139,6 +139,7 @@ class _SquareGrid extends StatelessWidget {
   final Set<String> selected;
   final bool selectionMode;
   final bool Function(String name) isImage;
+  final bool Function(String name) isVideo;
   final IconData Function(String name) fileIcon;
 
   const _SquareGrid({
@@ -146,7 +147,7 @@ class _SquareGrid extends StatelessWidget {
     required this.scrollController, required this.groupOffsets,
     required this.onOpen, required this.onToggleSelect,
     required this.selected, required this.selectionMode,
-    required this.isImage, required this.fileIcon,
+    required this.isImage, required this.isVideo, required this.fileIcon,
   });
 
   @override
@@ -177,7 +178,7 @@ class _SquareGrid extends StatelessWidget {
                 onTap: () => selectionMode ? onToggleSelect(id) : onOpen(id, name),
                 onLongPress: () => onToggleSelect(id),
                 child: Stack(fit: StackFit.expand, children: [
-                  isImage(name)
+                  (isImage(name) || isVideo(name))
                       ? Image.network('${relay.baseUrl}/files/$id/thumbnail',
                           headers: relay.headers, fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0D1117),
@@ -187,6 +188,9 @@ class _SquareGrid extends StatelessWidget {
                                   child: const Center(child: CircularProgressIndicator(strokeWidth: 1))))
                       : Container(color: const Color(0xFF111827),
                           child: Center(child: Icon(fileIcon(name), size: 36, color: const Color(0xFF6080A0)))),
+                  if (isVideo(name))
+                    const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 36,
+                        shadows: [Shadow(color: Colors.black54, blurRadius: 8)])),
                   if (selectionMode) AnimatedContainer(
                     duration: const Duration(milliseconds: 120),
                     color: isSelected ? Colors.black54 : Colors.black26,

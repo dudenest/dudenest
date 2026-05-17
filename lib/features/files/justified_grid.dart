@@ -1,17 +1,20 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../../core/network/relay_client.dart';
 import 'date_group_model.dart';
 import 'gallery_settings.dart';
 
 // JustifiedGrid — Google Photos-style layout.
-// Arranges photos in rows of equal height, each photo preserving its aspect ratio.
-// If aspect ratio unknown, falls back to 1:1 and updates when image dimensions arrive.
+// Aspect ratios: 1) from API width/height; 2) decoded from LQIP (aspect-preserving tiny JPEG);
+// 3) fallback 1:1. Never reads from /thumbnail (which is square-cropped 200x200).
 class JustifiedGrid extends StatefulWidget {
   final List<DateGroup> groups;
   final GallerySettings settings;
   final RelayClient relay;
   final ScrollController scrollController;
-  final Map<String, double> groupOffsets; // filled on build, used by DateScrubbar
+  final Map<String, double> groupOffsets;
   final void Function(String id, String name) onOpen;
   final void Function(String id) onToggleSelect;
   final Set<String> selected;
@@ -41,24 +44,38 @@ class JustifiedGrid extends StatefulWidget {
 }
 
 class _JustifiedGridState extends State<JustifiedGrid> {
-  // Cache of aspect ratios: file_id → width/height. Pre-filled from API, updated when image loads.
+  // Aspect ratio cache: file_id → width/height. Pre-filled from API, refined from LQIP.
   final Map<String, double> _ratios = {};
+  final Set<String> _loadingLqip = {}; // prevent duplicate async decodes
 
   double _ratio(Map<String, dynamic> f) {
     final id = f['file_id'] as String? ?? '';
     if (_ratios.containsKey(id)) return _ratios[id]!;
+    // Prefer API-provided dims (most accurate, from .dims sidecar on relay)
     final w = (f['width'] as num?)?.toDouble() ?? 0;
     final h = (f['height'] as num?)?.toDouble() ?? 0;
     if (w > 0 && h > 0) { _ratios[id] = w / h; return _ratios[id]!; }
-    return 1.0; // fallback square
+    // Fallback: decode LQIP — it preserves aspect ratio (not square-cropped like thumbnail)
+    final lqip = f['lqip'] as String?;
+    if (lqip != null && lqip.isNotEmpty && !_loadingLqip.contains(id)) {
+      _loadingLqip.add(id);
+      _loadLqipRatio(id, lqip);
+    }
+    return 1.0; // square fallback until async decode finishes
   }
 
-  void _onImageLoaded(String id, ImageInfo info, bool _) {
-    final r = info.image.width / info.image.height;
-    if ((_ratios[id] ?? 0) != r) setState(() => _ratios[id] = r);
+  Future<void> _loadLqipRatio(String id, String lqip) async {
+    try {
+      final b64 = lqip.contains(',') ? lqip.split(',').last : lqip;
+      final bytes = base64Decode(b64);
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final r = frame.image.width / frame.image.height.toDouble();
+      frame.image.dispose();
+      if (mounted && !_ratios.containsKey(id)) setState(() => _ratios[id] = r);
+    } catch (_) {}
   }
 
-  // Build a single row of files sized to target height.
   Widget _buildRow(List<Map<String, dynamic>> files, double availWidth, double targetH) {
     if (files.isEmpty) return const SizedBox.shrink();
     final ratios = files.map(_ratio).toList();
@@ -93,28 +110,25 @@ class _JustifiedGridState extends State<JustifiedGrid> {
   }
 
   Widget _buildTile(String id, String name, double h) {
-    if (widget.isImage(name)) {
-      final img = Image.network(
-        '${widget.relay.baseUrl}/files/$id/thumbnail',
-        headers: widget.relay.headers,
-        fit: BoxFit.cover,
-        frameBuilder: (ctx, child, frame, loaded) {
-          // Detect real image dims once loaded
-          return child;
-        },
-        errorBuilder: (_, __, ___) => Container(
-          color: const Color(0xFF0D1117),
-          child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040))),
+    final isMedia = widget.isImage(name) || widget.isVideo(name);
+    if (isMedia) {
+      return Stack(fit: StackFit.expand, children: [
+        Image.network(
+          '${widget.relay.baseUrl}/files/$id/thumbnail',
+          headers: widget.relay.headers,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: const Color(0xFF0D1117),
+            child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040))),
+          ),
+          loadingBuilder: (_, child, p) => p == null ? child
+              : Container(color: const Color(0xFF0D1117),
+                  child: const Center(child: CircularProgressIndicator(strokeWidth: 1))),
         ),
-        loadingBuilder: (_, child, p) => p == null ? child
-            : Container(color: const Color(0xFF0D1117),
-                child: const Center(child: CircularProgressIndicator(strokeWidth: 1))),
-      );
-      // Listen for image dimensions to update aspect ratio cache
-      final stream = NetworkImage('${widget.relay.baseUrl}/files/$id/thumbnail', headers: widget.relay.headers)
-          .resolve(ImageConfiguration.empty);
-      stream.addListener(ImageStreamListener((info, sync) => _onImageLoaded(id, info, sync)));
-      return img;
+        if (widget.isVideo(name))
+          const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 36,
+              shadows: [Shadow(color: Colors.black54, blurRadius: 8)])),
+      ]);
     }
     return Container(
       color: const Color(0xFF111827),
@@ -138,7 +152,6 @@ class _JustifiedGridState extends State<JustifiedGrid> {
           ),
   );
 
-  // Splits files into rows using justified algorithm.
   List<List<Map<String, dynamic>>> _buildRows(List<Map<String, dynamic>> files, double availW, double targetH) {
     final rows = <List<Map<String, dynamic>>>[];
     final current = <Map<String, dynamic>>[];
