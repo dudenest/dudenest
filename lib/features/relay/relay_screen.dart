@@ -5,6 +5,7 @@ import '../../core/auth/web_utils.dart';
 import '../storage_accounts/accounts_screen.dart';
 import '../files/gallery_screen.dart';
 import '../files/gallery_settings.dart';
+import '../files/media_viewer.dart';
 
 enum _ViewMode { gallery, list, longNames }
 
@@ -207,13 +208,23 @@ class _RelayScreenState extends State<RelayScreen> {
     return SizedBox(width: sz, height: sz, child: Center(child: Icon(_fileIcon(name))));
   }
 
-  // Opens file: fullscreen for images, download for others
+  // Opens file in MediaViewer (images + videos inline) or downloads others.
   void _openFile(BuildContext ctx, String id, String name) {
-    if (_isImage(name)) {
+    if (_isImage(name) || _isVideo(name)) {
+      // Sort files by taken_at/created (newest first) — matches gallery display order for consistent swipe navigation.
+      final sorted = [..._files]..sort((a, b) {
+        DateTime dateOf(Map<String, dynamic> f) {
+          final t = f['taken_at'] as String? ?? f['created'] as String? ?? '';
+          return DateTime.tryParse(t) ?? DateTime(2000);
+        }
+        return dateOf(b).compareTo(dateOf(a));
+      });
+      final idx = sorted.indexWhere((f) => f['file_id'] == id);
       Navigator.push(ctx, MaterialPageRoute(
-        builder: (_) => _FullscreenViewer(
-          url: '${widget.relay.baseUrl}/files/$id',
-          name: name, relay: widget.relay, fileId: id,
+        builder: (_) => MediaViewer(
+          files: sorted,
+          initialIndex: idx < 0 ? 0 : idx,
+          relay: widget.relay,
           onDelete: () { Navigator.pop(ctx); _load(); },
         ),
       ));
@@ -375,64 +386,6 @@ class _RelayScreenState extends State<RelayScreen> {
           child: _buildContent(),
         ),
         if (_selectionMode) Positioned(bottom: 0, left: 0, right: 0, child: _buildSelectionBar()),
-      ]),
-    );
-  }
-}
-
-// ─── Fullscreen image viewer ─────────────────────────────────────────────────
-class _FullscreenViewer extends StatelessWidget {
-  final String url;
-  final String name;
-  final RelayClient relay;
-  final String fileId;
-  final VoidCallback onDelete;
-  const _FullscreenViewer({required this.url, required this.name, required this.relay,
-      required this.fileId, required this.onDelete});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(children: [
-        Center(
-          child: InteractiveViewer(
-            minScale: 0.5, maxScale: 8.0,
-            child: Image.network(url,
-              headers: relay.headers,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white54, size: 64),
-              loadingBuilder: (_, child, p) => p == null ? child
-                  : const Center(child: CircularProgressIndicator(color: Colors.white54)),
-            ),
-          ),
-        ),
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              IconButton(icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-                  onPressed: () => Navigator.pop(context)),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.white54),
-                onPressed: () async {
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Delete file'), content: Text('Delete "$name"?'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                        TextButton(onPressed: () => Navigator.pop(ctx, true),
-                            style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Delete')),
-                      ],
-                    ),
-                  );
-                  if (ok == true) { await relay.deleteFile(fileId); onDelete(); }
-                },
-              ),
-            ]),
-          ),
-        ),
       ]),
     );
   }

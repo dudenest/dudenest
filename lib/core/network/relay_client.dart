@@ -149,4 +149,20 @@ class RelayClient {
         headers: _headers, body: jsonEncode(body));
     return _processResponse(resp, 'POST /auth/exchange') as Map<String, dynamic>;
   }
+
+  // GET /files/{id}/meta — returns file metadata (favorites, albums, location, caption)
+  Future<Map<String, dynamic>> getMeta(String fileId) async {
+    final resp = await _http.get(Uri.parse('$baseUrl/files/$fileId/meta'), headers: _headers);
+    return _processResponse(resp, 'GET /files/$fileId/meta') as Map<String, dynamic>;
+  }
+
+  // PATCH /files/{id}/meta — updates file metadata
+  Future<Map<String, dynamic>> patchMeta(String fileId, Map<String, dynamic> patch) async {
+    final resp = await _http.patch(
+      Uri.parse('$baseUrl/files/$fileId/meta'),
+      headers: _headers,
+      body: jsonEncode(patch),
+    );
+    return _processResponse(resp, 'PATCH /files/$fileId/meta') as Map<String, dynamic>;
+  }
 }
