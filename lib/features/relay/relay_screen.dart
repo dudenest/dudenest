@@ -311,6 +311,19 @@ class _RelayScreenState extends State<RelayScreen> {
     GalleryViewMode.list => Icons.list,
   };
 
+  Future<void> _openGallerySettings() async {
+    final result = await showModalBottomSheet<GallerySettings>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _GallerySettingsSheet(initial: _gallerySettings),
+    );
+    if (result != null && mounted) {
+      await result.save();
+      setState(() => _gallerySettings = result);
+    }
+  }
+
   static const _kVersion = String.fromEnvironment('APP_VERSION', defaultValue: 'dev');
 
   Widget _buildContent() {
@@ -383,31 +396,10 @@ class _RelayScreenState extends State<RelayScreen> {
                 onPressed: () => setState(() => _viewMode = mode),
               ),
             if (_viewMode == _ViewMode.gallery)
-              PopupMenuButton<GalleryViewMode>(
-                icon: Icon(_galleryLayoutIcon(_gallerySettings.viewMode)),
-                tooltip: 'Gallery layout',
-                onSelected: (mode) async {
-                  final ns = GallerySettings(
-                    viewMode: mode,
-                    justifiedRowHeight: _gallerySettings.justifiedRowHeight,
-                    masonryColumns: _gallerySettings.masonryColumns,
-                    groupByDate: _gallerySettings.groupByDate,
-                    showDateHeaders: _gallerySettings.showDateHeaders,
-                    showDateScrubbar: _gallerySettings.showDateScrubbar,
-                  );
-                  await ns.save();
-                  if (mounted) setState(() => _gallerySettings = ns);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: GalleryViewMode.justified, child: ListTile(
-                    leading: Icon(Icons.view_agenda_outlined), title: Text('Justified'), dense: true)),
-                  PopupMenuItem(value: GalleryViewMode.masonry, child: ListTile(
-                    leading: Icon(Icons.dashboard_outlined), title: Text('Masonry'), dense: true)),
-                  PopupMenuItem(value: GalleryViewMode.square, child: ListTile(
-                    leading: Icon(Icons.grid_on), title: Text('Square grid'), dense: true)),
-                  PopupMenuItem(value: GalleryViewMode.list, child: ListTile(
-                    leading: Icon(Icons.list), title: Text('List'), dense: true)),
-                ],
+              IconButton(
+                icon: const Icon(Icons.tune),
+                tooltip: 'Gallery settings',
+                onPressed: _openGallerySettings,
               ),
             IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Refresh'),
           ],
@@ -500,6 +492,152 @@ class _WelcomeScreen extends StatelessWidget {
             label: const Text('Add Cloud Account'),
             onPressed: () => Navigator.push(
                 context, MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay))),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── Gallery Settings Bottom Sheet ───────────────────────────────────────────
+
+class _GallerySettingsSheet extends StatefulWidget {
+  final GallerySettings initial;
+  const _GallerySettingsSheet({required this.initial});
+  @override
+  State<_GallerySettingsSheet> createState() => _GallerySettingsSheetState();
+}
+
+class _GallerySettingsSheetState extends State<_GallerySettingsSheet> {
+  late GallerySettings _s;
+
+  @override
+  void initState() { super.initState(); _s = GallerySettings(
+    viewMode: widget.initial.viewMode,
+    justifiedRowHeight: widget.initial.justifiedRowHeight,
+    masonryColumns: widget.initial.masonryColumns,
+    groupByDate: widget.initial.groupByDate,
+    showDateHeaders: widget.initial.showDateHeaders,
+    showDateScrubbar: widget.initial.showDateScrubbar,
+  ); }
+
+  void _apply() => Navigator.pop(context, _s);
+
+  GallerySettings _with({
+    GalleryViewMode? viewMode,
+    double? justifiedRowHeight,
+    int? masonryColumns,
+    bool? groupByDate,
+    bool? showDateHeaders,
+    bool? showDateScrubbar,
+  }) => GallerySettings(
+    viewMode: viewMode ?? _s.viewMode,
+    justifiedRowHeight: justifiedRowHeight ?? _s.justifiedRowHeight,
+    masonryColumns: masonryColumns ?? _s.masonryColumns,
+    groupByDate: groupByDate ?? _s.groupByDate,
+    showDateHeaders: showDateHeaders ?? _s.showDateHeaders,
+    showDateScrubbar: showDateScrubbar ?? _s.showDateScrubbar,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final layouts = [
+      (GalleryViewMode.justified, Icons.view_agenda_outlined, 'Justified'),
+      (GalleryViewMode.masonry,   Icons.dashboard_outlined,   'Masonry'),
+      (GalleryViewMode.square,    Icons.grid_on,              'Square'),
+      (GalleryViewMode.list,      Icons.list,                 'List'),
+    ];
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(top: 12, bottom: 16),
+            decoration: BoxDecoration(color: scheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: Row(children: [
+              Text('Gallery settings', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              const Spacer(),
+              FilledButton(onPressed: _apply, child: const Text('Apply')),
+            ]),
+          ),
+          const Divider(height: 20),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Layout', style: Theme.of(context).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant)),
+              const SizedBox(height: 10),
+              Row(children: layouts.map((t) {
+                final (mode, icon, label) = t;
+                final selected = _s.viewMode == mode;
+                return Expanded(child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => setState(() => _s = _with(viewMode: mode)),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: selected ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected ? scheme.primary : Colors.transparent, width: 2),
+                      ),
+                      child: Column(children: [
+                        Icon(icon, color: selected ? scheme.primary : scheme.onSurfaceVariant),
+                        const SizedBox(height: 4),
+                        Text(label, style: TextStyle(
+                          fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                          color: selected ? scheme.primary : scheme.onSurfaceVariant)),
+                      ]),
+                    ),
+                  ),
+                ));
+              }).toList()),
+              const SizedBox(height: 16),
+              if (_s.viewMode == GalleryViewMode.justified) ...[
+                Text('Row height: ${_s.justifiedRowHeight.round()} px',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                Slider(
+                  value: _s.justifiedRowHeight, min: 120, max: 320, divisions: 10,
+                  label: '${_s.justifiedRowHeight.round()} px',
+                  onChanged: (v) => setState(() => _s = _with(justifiedRowHeight: v)),
+                ),
+              ],
+              if (_s.viewMode == GalleryViewMode.masonry) ...[
+                Text('Columns: ${_s.masonryColumns}',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                Slider(
+                  value: _s.masonryColumns.toDouble(), min: 2, max: 4, divisions: 2,
+                  label: '${_s.masonryColumns}',
+                  onChanged: (v) => setState(() => _s = _with(masonryColumns: v.round())),
+                ),
+              ],
+              SwitchListTile.adaptive(
+                dense: true, contentPadding: EdgeInsets.zero,
+                title: const Text('Group by date'),
+                value: _s.groupByDate,
+                onChanged: (v) => setState(() => _s = _with(groupByDate: v)),
+              ),
+              SwitchListTile.adaptive(
+                dense: true, contentPadding: EdgeInsets.zero,
+                title: const Text('Show date headers'),
+                value: _s.showDateHeaders,
+                onChanged: (v) => setState(() => _s = _with(showDateHeaders: v)),
+              ),
+              SwitchListTile.adaptive(
+                dense: true, contentPadding: EdgeInsets.zero,
+                title: const Text('Show timeline scrubbar'),
+                value: _s.showDateScrubbar,
+                onChanged: (v) => setState(() => _s = _with(showDateScrubbar: v)),
+              ),
+              const SizedBox(height: 8),
+            ]),
           ),
         ]),
       ),
