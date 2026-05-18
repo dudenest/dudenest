@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] — 2026-05-18 — Gallery UI & Media Viewer Overhaul
+
+### Added
+- **MediaViewer — fullscreen photo & video viewer**
+  - Swipe left/right to navigate between files (PageView)
+  - Keyboard ← → to navigate, Escape to close
+  - Mouse-hover-reveal overlay: navigation arrows (◀ ▶), title bar with download/delete/info, page counter
+  - Progressive loading: LQIP blur placeholder → 800px preview (AnimatedOpacity crossfade) → original full resolution
+  - Pinch-to-zoom via `InteractiveViewer` (`panEnabled: _zoomed` — at 1× scale PageView captures swipes; at zoom > 1.05× image panning activates)
+  - Video inline playback with `VideoPlayer` widget
+  - Info panel: filename, resolution, EXIF date, file size
+  - Auto-hide overlay: 4 s for photos, 8 s for videos; re-shown on tap/mouse-move
+- **Gallery layout system — 4 modes**
+  - **Justified** (default) — Google Photos-style rows with correct aspect ratio; target row height configurable 120–320 px
+  - **Masonry** — Pinterest-style staggered columns; column count 2–4 configurable
+  - **Square** — 3-column fixed grid (original mode preserved)
+  - **List** — file list with thumbnail, name, size
+- **Gallery settings bottom sheet** — `tune` icon in AppBar (gallery mode only)
+  - Visual layout picker: 4 animated card buttons with icons; selected card highlighted
+  - Row height slider (Justified mode)
+  - Column count slider (Masonry mode: 2/3/4)
+  - Toggle: Group by date
+  - Toggle: Show date headers
+  - Toggle: Show timeline scrubbar
+  - All settings persisted via `SharedPreferences`
+- **DateScrubbar** — 30 px vertical right-side timeline for fast scroll navigation (Justified mode only); year/month markers; tap or drag to jump
+- **Date grouping** — files grouped by EXIF `taken_at`; fallback to `created` upload timestamp; newest group first
+- **Video thumbnail overlays** — play icon (▶) overlay on video tiles in all grid modes
+
+### Fixed
+- **Justified grid: all tiles were 1:1 squares** — thumbnail decoder (200×200 square JPEG) was used for ratio detection → always 1.0; replaced with LQIP-based AR detection via `dart:ui.instantiateImageCodec`; falls back to `width`/`height` from API metadata
+- **Masonry infinite scroll** — `ClampingScrollPhysics` added; DateScrubbar restricted to Justified mode only (no stale offset interference); `_groupOffsets` cleared and scroll reset to 0 on mode switch
+- **Gallery settings not visible** — replaced hidden `PopupMenuButton` with `tune` icon + bottom sheet; layout options now clearly labeled with icons
+- **Square LQIP (relay-side fix applied)** — old files now get correct LQIP via relay lazy sidecar generation
+
+---
+
 ## [0.5.0] - 2026-05-14
 
 ### Added
