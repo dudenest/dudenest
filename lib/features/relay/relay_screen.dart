@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/network/relay_client.dart';
 import '../../core/auth/web_utils.dart';
 import '../storage_accounts/accounts_screen.dart';
+import '../upload/upload_screen.dart';
 import '../files/gallery_screen.dart';
 import '../files/gallery_settings.dart';
 import '../files/media_viewer.dart';
@@ -334,7 +335,7 @@ class _RelayScreenState extends State<RelayScreen> {
       }
       return _ErrorDisplay(error: _error!, onRetry: _load);
     }
-    if (_files.isEmpty) return const Center(child: Text('No files yet. Upload something first.'));
+    if (_files.isEmpty) return _NoFilesEmptyState(relay: widget.relay, onUploaded: _load);
     return switch (_viewMode) {
       _ViewMode.gallery => _buildGallery(),
       _ViewMode.list => _buildList(),
@@ -456,6 +457,56 @@ class _ErrorDisplay extends StatelessWidget {
           ],
           const SizedBox(height: 24),
           ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── No files yet (cloud account exists, index empty) ───────────────────────
+// Distinct from _WelcomeScreen: this is shown when /files succeeds with []
+// (provider authorized, just nothing uploaded/indexed yet). Offers two actions:
+// upload the first file, or wire up another cloud account.
+
+class _NoFilesEmptyState extends StatelessWidget {
+  final RelayClient relay;
+  final VoidCallback onUploaded;
+  const _NoFilesEmptyState({required this.relay, required this.onUploaded});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.cloud_done_outlined, size: 64, color: scheme.primary),
+          const SizedBox(height: 24),
+          Text('No files yet',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          Text(
+            'Your cloud account is connected. Upload your first file, or connect another cloud account to expand storage.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          FilledButton.icon(
+            icon: const Icon(Icons.upload_file_outlined),
+            label: const Text('Upload'),
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => UploadScreen(relay: relay)));
+              onUploaded(); // refresh /files when user returns
+            },
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.cloud_outlined),
+            label: const Text('Add Cloud Account'),
+            onPressed: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay))),
+          ),
         ]),
       ),
     );
