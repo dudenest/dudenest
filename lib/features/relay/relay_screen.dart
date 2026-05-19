@@ -184,12 +184,12 @@ class _RelayScreenState extends State<RelayScreen> {
                 style: TextStyle(fontWeight: FontWeight.w500, color: fg)),
             const Spacer(),
             IconButton(
-              icon: Icon(Icons.photo_album_outlined, color: fg.withValues(alpha: 0.5)),
+              icon: Icon(Icons.photo_album, color: fg.withValues(alpha: 0.5)),
               tooltip: 'Add to album — coming soon',
               onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add to album — coming soon'), duration: Duration(seconds: 1))),
             ),
             IconButton(
-              icon: Icon(Icons.share_outlined, color: fg.withValues(alpha: 0.5)),
+              icon: Icon(Icons.share, color: fg.withValues(alpha: 0.5)),
               tooltip: 'Share — coming soon',
               onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share — coming soon'), duration: Duration(seconds: 1))),
             ),
@@ -325,7 +325,7 @@ class _RelayScreenState extends State<RelayScreen> {
   }
 
   IconData _modeIcon(_ViewMode m) => switch (m) {
-    _ViewMode.gallery => Icons.photo_library_outlined,
+    _ViewMode.gallery => Icons.photo_library,
     _ViewMode.list => Icons.list,
     _ViewMode.longNames => Icons.text_snippet,
   };
@@ -335,8 +335,8 @@ class _RelayScreenState extends State<RelayScreen> {
     _ViewMode.longNames => 'Long names',
   };
   IconData _galleryLayoutIcon(GalleryViewMode m) => switch (m) {
-    GalleryViewMode.justified => Icons.view_agenda_outlined,
-    GalleryViewMode.masonry => Icons.dashboard_outlined,
+    GalleryViewMode.justified => Icons.view_agenda,
+    GalleryViewMode.masonry => Icons.dashboard,
     GalleryViewMode.square => Icons.grid_on,
     GalleryViewMode.list => Icons.list,
   };
@@ -509,7 +509,7 @@ class _NoFilesEmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.cloud_done_outlined, size: 64, color: scheme.primary),
+          Icon(Icons.cloud_done, size: 64, color: scheme.primary),
           const SizedBox(height: 24),
           Text('No files yet',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
@@ -522,7 +522,7 @@ class _NoFilesEmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 32),
           FilledButton.icon(
-            icon: const Icon(Icons.upload_file_outlined),
+            icon: const Icon(Icons.upload_file),
             label: const Text('Upload'),
             onPressed: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => UploadScreen(relay: relay)));
@@ -531,7 +531,7 @@ class _NoFilesEmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
-            icon: const Icon(Icons.cloud_outlined),
+            icon: const Icon(Icons.cloud),
             label: const Text('Add Cloud Account'),
             onPressed: () => Navigator.push(
                 context, MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay))),
@@ -568,7 +568,7 @@ class _WelcomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 32),
           FilledButton.icon(
-            icon: const Icon(Icons.cloud_outlined),
+            icon: const Icon(Icons.cloud),
             label: const Text('Add Cloud Account'),
             onPressed: () => Navigator.push(
                 context, MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay))),
@@ -623,8 +623,8 @@ class _GallerySettingsSheetState extends State<_GallerySettingsSheet> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final layouts = [
-      (GalleryViewMode.justified, Icons.view_agenda_outlined, 'Justified'),
-      (GalleryViewMode.masonry,   Icons.dashboard_outlined,   'Masonry'),
+      (GalleryViewMode.justified, Icons.view_agenda, 'Justified'),
+      (GalleryViewMode.masonry,   Icons.dashboard,   'Masonry'),
       (GalleryViewMode.square,    Icons.grid_on,              'Square'),
       (GalleryViewMode.list,      Icons.list,                 'List'),
     ];

@@ -154,9 +154,9 @@ class _AppCard extends StatelessWidget {
           Wrap(spacing: 8, children: [
             TextButton.icon(icon: const Icon(Icons.code, size: 16), label: const Text('Repository'),
                 onPressed: () => onOpen('https://github.com/dudenest/dudenest')),
-            TextButton.icon(icon: const Icon(Icons.description_outlined, size: 16), label: const Text('Changelog'),
+            TextButton.icon(icon: const Icon(Icons.description, size: 16), label: const Text('Changelog'),
                 onPressed: () => onOpen('https://github.com/dudenest/dudenest/blob/main/CHANGELOG.md')),
-            TextButton.icon(icon: const Icon(Icons.local_offer_outlined, size: 16), label: const Text('Releases'),
+            TextButton.icon(icon: const Icon(Icons.local_offer, size: 16), label: const Text('Releases'),
                 onPressed: () => onOpen('https://github.com/dudenest/dudenest/releases')),
           ]),
         ]),
@@ -195,7 +195,7 @@ class _RelayCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            const Icon(Icons.dns_outlined, size: 28),
+            const Icon(Icons.dns, size: 28),
             const SizedBox(width: 12),
             Text('Dudenest Relay', style: Theme.of(context).textTheme.titleMedium),
             const Spacer(),
@@ -234,8 +234,8 @@ class _RelayCard extends StatelessWidget {
           const SizedBox(height: 12),
           Wrap(spacing: 8, children: [
             TextButton.icon(icon: const Icon(Icons.code, size: 16), label: const Text('Repository'), onPressed: () => onOpen(repoUrl)),
-            TextButton.icon(icon: const Icon(Icons.description_outlined, size: 16), label: const Text('Changelog'), onPressed: () => onOpen(changelogUrl)),
-            TextButton.icon(icon: const Icon(Icons.local_offer_outlined, size: 16), label: const Text('Release'), onPressed: () => onOpen(releaseUrl)),
+            TextButton.icon(icon: const Icon(Icons.description, size: 16), label: const Text('Changelog'), onPressed: () => onOpen(changelogUrl)),
+            TextButton.icon(icon: const Icon(Icons.local_offer, size: 16), label: const Text('Release'), onPressed: () => onOpen(releaseUrl)),
           ]),
           const SizedBox(height: 12),
           Row(children: [
@@ -267,7 +267,7 @@ class _BackendCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            const Icon(Icons.cloud_circle_outlined, size: 28),
+            const Icon(Icons.cloud_circle, size: 28),
             const SizedBox(width: 12),
             Text('Dudenest Backend', style: Theme.of(context).textTheme.titleMedium),
           ]),
@@ -278,7 +278,7 @@ class _BackendCard extends StatelessWidget {
           Wrap(spacing: 8, children: [
             TextButton.icon(icon: const Icon(Icons.code, size: 16), label: const Text('Repository'),
                 onPressed: () => onOpen('https://github.com/dudenest/dudenest-backup')),
-            TextButton.icon(icon: const Icon(Icons.description_outlined, size: 16), label: const Text('Changelog'),
+            TextButton.icon(icon: const Icon(Icons.description, size: 16), label: const Text('Changelog'),
                 onPressed: () => onOpen('https://github.com/dudenest/dudenest-backup/blob/main/CHANGELOG.md')),
           ]),
         ]),

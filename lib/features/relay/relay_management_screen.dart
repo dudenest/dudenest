@@ -116,7 +116,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                 ]))
               : _relays.isEmpty
                   ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.router_outlined, size: 64, color: Colors.grey),
+                      Icon(Icons.router, size: 64, color: Colors.grey),
                       SizedBox(height: 16),
                       Text('No relays registered yet.', style: TextStyle(color: Colors.grey)),
                       SizedBox(height: 8),
@@ -145,7 +145,7 @@ class _RelayManagementScreenState extends State<RelayManagementScreen> {
                           ),
                           trailing: hasBackup
                               ? IconButton(
-                                  icon: const Icon(Icons.cloud_download_outlined),
+                                  icon: const Icon(Icons.cloud_download),
                                   tooltip: 'View backup',
                                   onPressed: () => _showBackup(id),
                                 )

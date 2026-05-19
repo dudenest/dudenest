@@ -180,8 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() => _tab = i);
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.photo_library_outlined), label: 'Photos'),
-          NavigationDestination(icon: Icon(Icons.folder_outlined), label: 'Files'),
+          NavigationDestination(icon: Icon(Icons.photo_library), label: 'Photos'),
+          NavigationDestination(icon: Icon(Icons.folder), label: 'Files'),
           NavigationDestination(icon: Icon(Icons.upload), label: 'Upload'),
           NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
         ],
@@ -301,7 +301,7 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
         ListTile(
-          leading: const Icon(Icons.backup_outlined),
+          leading: const Icon(Icons.backup),
           title: const Text('My Relays & Backups'),
           subtitle: const Text('View registered relays and backup status'),
           trailing: const Icon(Icons.chevron_right),
@@ -317,7 +317,7 @@ class SettingsScreen extends StatelessWidget {
         const ListTile(title: Text('Community', style: TextStyle(fontWeight: FontWeight.bold))),
         _SocialLinkTile(icon: Icons.code, color: const Color(0xFF24292e),
             label: 'GitHub', subtitle: 'Source code', url: 'https://github.com/dudenest/dudenest'),
-        _SocialLinkTile(icon: Icons.forum_outlined, color: const Color(0xFF5865F2),
+        _SocialLinkTile(icon: Icons.forum, color: const Color(0xFF5865F2),
             label: 'Discord', subtitle: 'Community chat', url: 'https://discord.gg/pYjR9jS4'),
         _SocialLinkTile(icon: Icons.play_arrow_rounded, color: const Color(0xFFFF0000),
             label: 'YouTube', subtitle: 'Videos — coming soon'),
@@ -365,8 +365,8 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: SegmentedButton<GalleryViewMode>(
           segments: const [
-            ButtonSegment(value: GalleryViewMode.justified, label: Text('Justified'), icon: Icon(Icons.view_agenda_outlined)),
-            ButtonSegment(value: GalleryViewMode.masonry, label: Text('Masonry'), icon: Icon(Icons.dashboard_outlined)),
+            ButtonSegment(value: GalleryViewMode.justified, label: Text('Justified'), icon: Icon(Icons.view_agenda)),
+            ButtonSegment(value: GalleryViewMode.masonry, label: Text('Masonry'), icon: Icon(Icons.dashboard)),
             ButtonSegment(value: GalleryViewMode.square, label: Text('Square'), icon: Icon(Icons.grid_view)),
             ButtonSegment(value: GalleryViewMode.list, label: Text('List'), icon: Icon(Icons.list)),
           ],

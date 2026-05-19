@@ -20,7 +20,7 @@ class LoginScreen extends StatelessWidget {
               _SocialIconButton(icon: Icons.code,
                   url: 'https://github.com/dudenest/dudenest', tooltip: 'GitHub'),
               const SizedBox(width: 16),
-              _SocialIconButton(icon: Icons.forum_outlined,
+              _SocialIconButton(icon: Icons.forum,
                   url: 'https://discord.gg/pYjR9jS4', tooltip: 'Discord'),
             ]),
             const SizedBox(height: 4),
