@@ -17,7 +17,9 @@ dependencies:
   webview_flutter: ^4.0.0      # In-app WebView with JS auto-fill (Method E) — Android/iOS/macOS/Desktop only
   web_socket_channel: ^3.0.0   # WebSocket client for relay↔Flutter communication
   url_launcher: ^6.3.0         # Open URLs in system browser (fallback / web platform)
-  font_awesome_flutter: ^10.7.0  # Brand icons: GitHub, Discord, YouTube, Facebook, X. Flutter SDK pinned to 3.27.4 in deploy.yml; newer Flutter breaks font_awesome (extends final IconData class).
+  # font_awesome_flutter REMOVED 2026-05-19 — every 10.x release extends final `IconData`, which
+  # strict Dart 3 (Flutter ≥ 3.28) rejects with "can't be extended outside its library". Brand
+  # icons in login_screen.dart and main.dart now use Material `Icons.*` glyphs.
   fl_chart: ^1.2.0
   graphic: ^2.7.0
   logger: ^2.7.0

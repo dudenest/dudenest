@@ -10,9 +10,14 @@ import '../files/media_viewer.dart';
 
 enum _ViewMode { gallery, list, longNames }
 
+/// folder: null = show all (legacy "Files" tab); "photos" = only media (P3 Photos tab);
+/// "files" = only non-media (P3 Files tab). Filter is applied client-side via _matchesFolder()
+/// which checks the backend-supplied `f['folder']` field (relay v0.13.0+) and falls back to
+/// extension-based detection for older relays / pre-v0.11.0 uploads with stale `files/` location.
 class RelayScreen extends StatefulWidget {
   final RelayClient relay;
-  const RelayScreen({super.key, required this.relay});
+  final String? folder; // "photos" | "files" | null
+  const RelayScreen({super.key, required this.relay, this.folder});
   @override
   State<RelayScreen> createState() => _RelayScreenState();
 }
@@ -36,6 +41,23 @@ class _RelayScreenState extends State<RelayScreen> {
 
   static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif'};  // svg excluded: no native decode in Flutter web
   static const _videoExts = {'mp4','mov','avi','mkv','webm','m4v','3gp'};
+
+  /// Determines whether file `f` belongs in this screen given widget.folder filter.
+  /// Source-of-truth order:
+  ///   1. `f['folder']` from relay v0.13.0+ — exact match.
+  ///   2. Filename extension fallback for relays <v0.13.0 (no folder field) AND for legacy
+  ///      pre-v0.11.0 uploads where backend may report folder="files" even for images
+  ///      (those were routed to /files/ before content-type detection landed).
+  bool _matchesFolder(Map<String, dynamic> f) {
+    if (widget.folder == null) return true;
+    final backendFolder = f['folder'] as String?;
+    final ext = ((f['name'] as String? ?? '').split('.').lastOrNull ?? '').toLowerCase();
+    final isMediaByExt = _imageExts.contains(ext) || _videoExts.contains(ext);
+    final isMedia = backendFolder == 'photos' || (backendFolder != 'files' && isMediaByExt);
+    return widget.folder == 'photos' ? isMedia : !isMedia;
+  }
+
+  List<Map<String, dynamic>> get _visibleFiles => _files.where(_matchesFolder).toList(growable: false);
 
   @override
   void initState() { super.initState(); _load(); }
@@ -213,7 +235,8 @@ class _RelayScreenState extends State<RelayScreen> {
   void _openFile(BuildContext ctx, String id, String name) {
     if (_isImage(name) || _isVideo(name)) {
       // Sort files by taken_at/created (newest first) — matches gallery display order for consistent swipe navigation.
-      final sorted = [..._files]..sort((a, b) {
+      // Use _visibleFiles so the swipe set respects the active Photos/Files filter.
+      final sorted = [..._visibleFiles]..sort((a, b) {
         DateTime dateOf(Map<String, dynamic> f) {
           final t = f['taken_at'] as String? ?? f['created'] as String? ?? '';
           return DateTime.tryParse(t) ?? DateTime(2000);
@@ -236,7 +259,7 @@ class _RelayScreenState extends State<RelayScreen> {
 
   // ─── Gallery view: wraps GalleryScreen (Justified/Masonry/Square/List) ──────
   Widget _buildGallery() => GalleryScreen(
-    files: _files,
+    files: _visibleFiles,
     relay: widget.relay,
     settings: _gallerySettings,
     selected: _selected,
@@ -249,10 +272,12 @@ class _RelayScreenState extends State<RelayScreen> {
   );
 
   // ─── List view ──────────────────────────────────────────────────────────────
-  Widget _buildList() => ListView.builder(
-    itemCount: _files.length,
+  Widget _buildList() {
+    final files = _visibleFiles;
+    return ListView.builder(
+    itemCount: files.length,
     itemBuilder: (ctx, i) {
-      final f = _files[i];
+      final f = files[i];
       final id = f['file_id'] as String? ?? '';
       final name = f['name'] as String? ?? id;
       final isSelected = _selected.contains(id);
@@ -270,12 +295,15 @@ class _RelayScreenState extends State<RelayScreen> {
       );
     },
   );
+  }
 
   // ─── Long names view ────────────────────────────────────────────────────────
-  Widget _buildLongNames() => ListView.builder(
-    itemCount: _files.length,
+  Widget _buildLongNames() {
+    final files = _visibleFiles;
+    return ListView.builder(
+    itemCount: files.length,
     itemBuilder: (ctx, i) {
-      final f = _files[i];
+      final f = files[i];
       final id = f['file_id'] as String? ?? '';
       final name = f['name'] as String? ?? id;
       final isSelected = _selected.contains(id);
@@ -294,6 +322,7 @@ class _RelayScreenState extends State<RelayScreen> {
       );
     },
   );
+  }
 
   IconData _modeIcon(_ViewMode m) => switch (m) {
     _ViewMode.gallery => Icons.photo_library_outlined,
@@ -335,7 +364,7 @@ class _RelayScreenState extends State<RelayScreen> {
       }
       return _ErrorDisplay(error: _error!, onRetry: _load);
     }
-    if (_files.isEmpty) return _NoFilesEmptyState(relay: widget.relay, onUploaded: _load);
+    if (_visibleFiles.isEmpty) return _NoFilesEmptyState(relay: widget.relay, onUploaded: _load);
     return switch (_viewMode) {
       _ViewMode.gallery => _buildGallery(),
       _ViewMode.list => _buildList(),
@@ -350,7 +379,7 @@ class _RelayScreenState extends State<RelayScreen> {
       appBar: AppBar(
         title: _selectionMode
             ? Text('${_selected.length} selected')
-            : const Text('Files'),
+            : Text(widget.folder == 'photos' ? 'Photos' : (widget.folder == 'files' ? 'Files' : 'Files')),
         leading: _selectionMode
             ? IconButton(
                 icon: const Icon(Icons.close),

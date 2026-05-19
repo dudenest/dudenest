@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+// font_awesome_flutter removed — see main.dart for rationale (Dart 3 final-class regression).
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/auth/auth_service.dart';
 import 'starfield_background.dart';
@@ -17,10 +17,10 @@ class LoginScreen extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 20, top: 4),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              _SocialIconButton(icon: FontAwesomeIcons.github,
+              _SocialIconButton(icon: Icons.code,
                   url: 'https://github.com/dudenest/dudenest', tooltip: 'GitHub'),
               const SizedBox(width: 16),
-              _SocialIconButton(icon: FontAwesomeIcons.discord,
+              _SocialIconButton(icon: Icons.forum_outlined,
                   url: 'https://discord.gg/pYjR9jS4', tooltip: 'Discord'),
             ]),
             const SizedBox(height: 4),
@@ -116,7 +116,7 @@ class _SocialIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: IconButton(
-        icon: FaIcon(icon, size: 18, color: const Color(0xFF4A6080)),
+        icon: Icon(icon, size: 18, color: const Color(0xFF4A6080)),
         onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
       ),
     );

@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+// font_awesome_flutter removed in this commit — every 10.x release extends final IconData
+// which strict Dart 3 rejects, breaking Flutter test/build. Brand icons below now use Material's
+// built-in glyphs (Icons.facebook etc.) plus generic widgets for ones Material doesn't ship.
 import 'package:url_launcher/url_launcher.dart';
 import 'core/auth/auth_service.dart';
 import 'core/network/relay_client.dart';
@@ -11,6 +13,7 @@ import 'features/auth/login_screen.dart';
 import 'features/storage_accounts/accounts_screen.dart';
 import 'features/upload/upload_screen.dart';
 import 'features/relay/relay_screen.dart';
+import 'features/update/update_screen.dart';
 import 'features/relay/relay_management_screen.dart';
 import 'features/files/gallery_settings.dart';
 
@@ -161,7 +164,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // Show loading spinner until relay token is ready — prevents cold-start 403 on Files tab
     if (!_relayReady) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final screens = [
-      RelayScreen(relay: _relay),
+      RelayScreen(relay: _relay, folder: 'photos'),       // P3: media-only tab
+      RelayScreen(relay: _relay, folder: 'files'),        // P3: non-media tab
       UploadScreen(relay: _relay),
       SettingsScreen(relay: _relay, relayUrl: _relayUrl, onRelayUrlChanged: setRelayUrl),
     ];
@@ -170,11 +174,14 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) {
-          if (i == 0 && _tab != 0) _loadRelayUrl(); // refresh relay token when switching to Files tab
+          // Refresh relay token when switching INTO a tab that hits /files (Photos or Files).
+          // Settings + Upload don't read /files so they don't need it.
+          if ((i == 0 || i == 1) && _tab != i) _loadRelayUrl();
           setState(() => _tab = i);
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.folder), label: 'Files'),
+          NavigationDestination(icon: Icon(Icons.photo_library_outlined), label: 'Photos'),
+          NavigationDestination(icon: Icon(Icons.folder_outlined), label: 'Files'),
           NavigationDestination(icon: Icon(Icons.upload), label: 'Upload'),
           NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
         ],
@@ -215,14 +222,18 @@ class SettingsScreen extends StatelessWidget {
           ),
           const Divider(),
         ],
-        // Version — displayed right after user info
+        // Version — displayed right after user info; tap to open full Update screen
         ListTile(
           leading: const Icon(Icons.tag),
-          title: const Text('Version'),
-          trailing: const Text(
-            String.fromEnvironment('APP_VERSION', defaultValue: 'dev'),
-            style: TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600),
-          ),
+          title: const Text('Version & Updates'),
+          subtitle: const Text('App + Relay versions, changelog, one-click relay update', style: TextStyle(fontSize: 12)),
+          trailing: const Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(String.fromEnvironment('APP_VERSION', defaultValue: 'dev'),
+                style: TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600)),
+            SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+          ]),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UpdateScreen(relay: relay))),
         ),
         const Divider(),
         const ListTile(title: Text('Theme', style: TextStyle(fontWeight: FontWeight.bold))),
@@ -304,15 +315,15 @@ class SettingsScreen extends StatelessWidget {
         _GallerySettingsTile(),
         const Divider(),
         const ListTile(title: Text('Community', style: TextStyle(fontWeight: FontWeight.bold))),
-        _SocialLinkTile(icon: FontAwesomeIcons.github, color: const Color(0xFF24292e),
+        _SocialLinkTile(icon: Icons.code, color: const Color(0xFF24292e),
             label: 'GitHub', subtitle: 'Source code', url: 'https://github.com/dudenest/dudenest'),
-        _SocialLinkTile(icon: FontAwesomeIcons.discord, color: const Color(0xFF5865F2),
+        _SocialLinkTile(icon: Icons.forum_outlined, color: const Color(0xFF5865F2),
             label: 'Discord', subtitle: 'Community chat', url: 'https://discord.gg/pYjR9jS4'),
-        _SocialLinkTile(icon: FontAwesomeIcons.youtube, color: const Color(0xFFFF0000),
+        _SocialLinkTile(icon: Icons.play_arrow_rounded, color: const Color(0xFFFF0000),
             label: 'YouTube', subtitle: 'Videos — coming soon'),
-        _SocialLinkTile(icon: FontAwesomeIcons.facebook, color: const Color(0xFF1877F2),
+        _SocialLinkTile(icon: Icons.facebook, color: const Color(0xFF1877F2),
             label: 'Facebook', subtitle: 'Page — coming soon'),
-        _SocialLinkTile(icon: FontAwesomeIcons.xTwitter, color: Colors.black87,
+        _SocialLinkTile(icon: Icons.close, color: Colors.black87,
             label: 'X / Twitter', subtitle: 'Updates — coming soon'),
       ]),
     );
@@ -429,7 +440,7 @@ class _SocialLinkTile extends StatelessWidget {
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: color.withOpacity(0.12),
-        child: FaIcon(icon, color: color, size: 18),
+        child: Icon(icon, color: color, size: 18),
       ),
       title: Text(label),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),

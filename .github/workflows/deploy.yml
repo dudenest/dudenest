@@ -15,8 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.4'  # Dart 3.6.x — last stable where font_awesome_flutter (10.x) compiles; newer Flutter enforces final classes strictly and IconData can no longer be extended
-          channel: stable
+          channel: stable  # font_awesome_flutter removed 2026-05-19, so we no longer need the 3.27.x pin that was blocking Dart 3 strict; latest stable is now fine
       - run: flutter pub get
       - name: Run tests
         run: flutter test
@@ -32,8 +31,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.4'  # Dart 3.6.x — last stable where font_awesome_flutter (10.x) compiles; newer Flutter enforces final classes strictly and IconData can no longer be extended
-          channel: stable
+          channel: stable  # font_awesome_flutter removed 2026-05-19, so we no longer need the 3.27.x pin that was blocking Dart 3 strict; latest stable is now fine
 
       - run: flutter pub get
 

@@ -165,4 +165,21 @@ class RelayClient {
     );
     return _processResponse(resp, 'PATCH /files/$fileId/meta') as Map<String, dynamic>;
   }
+
+  // GET /admin/version — returns running relay version + latest GitHub release + canonical URLs.
+  // Powers the Update screen header. Available since relay v0.12.0; older relays return 404, which
+  // the caller treats as "unknown — show only what we know locally" rather than an error.
+  Future<Map<String, dynamic>> getRelayVersionInfo() async {
+    final resp = await _http.get(Uri.parse('$baseUrl/admin/version'), headers: _headers);
+    return _processResponse(resp, 'GET /admin/version') as Map<String, dynamic>;
+  }
+
+  // POST /admin/update — relay self-updates from the GitHub release matching its arch + restarts.
+  // Connection drops ~2 seconds after the response body arrives (relay SIGTERMs itself; systemd
+  // brings the new version up). Caller should show "restarting…" UI and re-poll /admin/version
+  // every 3 seconds for ~30 seconds until a different relay_version is reported.
+  Future<Map<String, dynamic>> triggerRelayUpdate() async {
+    final resp = await _http.post(Uri.parse('$baseUrl/admin/update'), headers: _headers);
+    return _processResponse(resp, 'POST /admin/update') as Map<String, dynamic>;
+  }
 }
