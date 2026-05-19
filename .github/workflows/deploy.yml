@@ -39,7 +39,13 @@ jobs:
         run: |
           VERSION="sha-$(echo "$GITHUB_SHA" | cut -c1-7)"
           echo "APP_VERSION=$VERSION"
-          flutter build web --release --pwa-strategy none "--dart-define=APP_VERSION=$VERSION"
+          # --no-tree-shake-icons: ships full MaterialIcons font (~150KB instead of ~13KB tree-shaken).
+          # Tree-shaker has been observed (2026-05-19) to omit codepoints for icons whose numeric value
+          # was changed in newer Material Icons revisions (e.g. Icons.photo_library moved from 0xE413
+          # → 0xE4BA; Icons.tune from 0xE429 → 0xE683). The shaker uses a stale codepoint map and the
+          # rendered glyph ends up missing from the bundled font even though the Dart code references
+          # the icon. Bundle bloat is negligible vs. the user-visible "blank icon" regression.
+          flutter build web --release --pwa-strategy none --no-tree-shake-icons "--dart-define=APP_VERSION=$VERSION"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
