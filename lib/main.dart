@@ -180,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() => _tab = i);
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.photo_library), label: 'Photos'),
+          NavigationDestination(icon: Icon(Icons.image), label: 'Photos'),
           NavigationDestination(icon: Icon(Icons.folder), label: 'Files'),
           NavigationDestination(icon: Icon(Icons.upload), label: 'Upload'),
           NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
@@ -365,7 +365,7 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: SegmentedButton<GalleryViewMode>(
           segments: const [
-            ButtonSegment(value: GalleryViewMode.justified, label: Text('Justified'), icon: Icon(Icons.view_agenda)),
+            ButtonSegment(value: GalleryViewMode.justified, label: Text('Justified'), icon: Icon(Icons.view_stream)),
             ButtonSegment(value: GalleryViewMode.masonry, label: Text('Masonry'), icon: Icon(Icons.dashboard)),
             ButtonSegment(value: GalleryViewMode.square, label: Text('Square'), icon: Icon(Icons.grid_view)),
             ButtonSegment(value: GalleryViewMode.list, label: Text('List'), icon: Icon(Icons.list)),

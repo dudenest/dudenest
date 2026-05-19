@@ -325,7 +325,7 @@ class _RelayScreenState extends State<RelayScreen> {
   }
 
   IconData _modeIcon(_ViewMode m) => switch (m) {
-    _ViewMode.gallery => Icons.photo_library,
+    _ViewMode.gallery => Icons.image,
     _ViewMode.list => Icons.list,
     _ViewMode.longNames => Icons.text_snippet,
   };
@@ -335,7 +335,7 @@ class _RelayScreenState extends State<RelayScreen> {
     _ViewMode.longNames => 'Long names',
   };
   IconData _galleryLayoutIcon(GalleryViewMode m) => switch (m) {
-    GalleryViewMode.justified => Icons.view_agenda,
+    GalleryViewMode.justified => Icons.view_stream,
     GalleryViewMode.masonry => Icons.dashboard,
     GalleryViewMode.square => Icons.grid_on,
     GalleryViewMode.list => Icons.list,
@@ -427,7 +427,7 @@ class _RelayScreenState extends State<RelayScreen> {
               ),
             if (_viewMode == _ViewMode.gallery)
               IconButton(
-                icon: const Icon(Icons.tune),
+                icon: const Icon(Icons.filter_alt),
                 tooltip: 'Gallery settings',
                 onPressed: _openGallerySettings,
               ),
@@ -623,7 +623,7 @@ class _GallerySettingsSheetState extends State<_GallerySettingsSheet> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final layouts = [
-      (GalleryViewMode.justified, Icons.view_agenda, 'Justified'),
+      (GalleryViewMode.justified, Icons.view_stream, 'Justified'),
       (GalleryViewMode.masonry,   Icons.dashboard,   'Masonry'),
       (GalleryViewMode.square,    Icons.grid_on,              'Square'),
       (GalleryViewMode.list,      Icons.list,                 'List'),
