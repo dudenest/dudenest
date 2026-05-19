@@ -427,7 +427,7 @@ class _RelayScreenState extends State<RelayScreen> {
               ),
             if (_viewMode == _ViewMode.gallery)
               IconButton(
-                icon: const Icon(Icons.filter_alt),
+                icon: const Icon(Icons.more_vert),
                 tooltip: 'Gallery settings',
                 onPressed: _openGallerySettings,
               ),
