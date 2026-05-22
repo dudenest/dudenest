@@ -50,11 +50,78 @@ class RelayClient {
     }
   }
 
-  // GET /providers — returns list of authenticated cloud accounts
+  // GET /providers — returns list of authenticated cloud accounts (legacy — pre-Phase α structure).
+  // Kept for backward compatibility with the StorageVisualizer.
   Future<List<Map<String, dynamic>>> getProviders() async {
     final resp = await _http.get(Uri.parse('$baseUrl/providers'), headers: _headers);
     final data = _processResponse(resp, 'GET /providers') as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['providers'] ?? []);
+  }
+
+  // ─── Phase α/β admin endpoints (multi-account policy) ────────────────────
+  // GET /admin/accounts — returns {accounts: [...], policy: {...}} per the relay's
+  // account.Manager state. Each account has id (int), provider, email, role, priority,
+  // pinned, quota_used_bytes, quota_total_bytes, status, etc. See dudenest-relay
+  // docs/MULTI-ACCOUNT.md for the full field reference.
+  Future<Map<String, dynamic>> getAdminAccounts() async {
+    final resp = await _http.get(Uri.parse('$baseUrl/admin/accounts'), headers: _headers);
+    return _processResponse(resp, 'GET /admin/accounts') as Map<String, dynamic>;
+  }
+
+  // PATCH /admin/accounts/{id} — overlay any subset of: role, priority, pinned,
+  // soft_cap_pct, hard_cap_pct, max_file_size_mb, accepts_content_types, region,
+  // compression_level. Returns the refreshed account record.
+  Future<Map<String, dynamic>> patchAdminAccount(int id, Map<String, dynamic> patch) async {
+    final resp = await _http.patch(
+      Uri.parse('$baseUrl/admin/accounts/$id'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(patch),
+    );
+    return _processResponse(resp, 'PATCH /admin/accounts/$id') as Map<String, dynamic>;
+  }
+
+  // POST /admin/accounts/reorder — bulk priority reorder by submitting the new ID order.
+  // IDs missing from the list keep their relative order and are appended.
+  Future<Map<String, dynamic>> reorderAdminAccounts(List<int> ids) async {
+    final resp = await _http.post(
+      Uri.parse('$baseUrl/admin/accounts/reorder'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({'ids': ids}),
+    );
+    return _processResponse(resp, 'POST /admin/accounts/reorder') as Map<String, dynamic>;
+  }
+
+  // POST /admin/accounts/{id}/refresh-quota — on-demand quota fetch from the cloud
+  // provider. Returns the refreshed account.
+  Future<Map<String, dynamic>> refreshAdminQuota(int id) async {
+    final resp = await _http.post(
+      Uri.parse('$baseUrl/admin/accounts/$id/refresh-quota'),
+      headers: _headers,
+    );
+    return _processResponse(resp, 'POST /admin/accounts/$id/refresh-quota') as Map<String, dynamic>;
+  }
+
+  // DELETE /admin/accounts/{id} — flips the account to Role=Drain. The relay's
+  // background drain worker then migrates shards to other accounts and finally
+  // sets Status=Removed when done. Phase γ (v0.19.0+).
+  Future<Map<String, dynamic>> drainAdminAccount(int id) async {
+    final resp = await _http.delete(
+      Uri.parse('$baseUrl/admin/accounts/$id'),
+      headers: _headers,
+    );
+    return _processResponse(resp, 'DELETE /admin/accounts/$id') as Map<String, dynamic>;
+  }
+
+  // PATCH /admin/policy — overlay merge of any subset of AccountPolicyConfig fields
+  // (replication_factor, diversity_required, soft_cap_default_pct, etc.). Returns
+  // the merged + persisted policy.
+  Future<Map<String, dynamic>> patchAdminPolicy(Map<String, dynamic> patch) async {
+    final resp = await _http.patch(
+      Uri.parse('$baseUrl/admin/policy'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(patch),
+    );
+    return _processResponse(resp, 'PATCH /admin/policy') as Map<String, dynamic>;
   }
 
   // GET /files — returns list of uploaded FileMaps

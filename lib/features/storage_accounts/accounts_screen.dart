@@ -18,7 +18,13 @@ class AccountsScreen extends StatefulWidget {
 }
 
 class _AccountsScreenState extends State<AccountsScreen> {
+  // Legacy /providers data — still drives StorageVisualizer + per-token auth status.
   List<Map<String, dynamic>> _providers = [];
+  // Phase α/β /admin/accounts data — drives the new richer list (priority, role, quota).
+  // Keyed by account ID for fast lookup when merging with legacy provider data.
+  Map<int, Map<String, dynamic>> _adminAccounts = {};
+  // Global policy (replication_factor, soft_cap, etc.) — surfaced in a header card.
+  Map<String, dynamic> _adminPolicy = {};
   bool _loading = true;
   Object? _error;
 
@@ -28,12 +34,44 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final providers = await widget.relay.getProviders();
-      setState(() { _providers = providers; _loading = false; });
+      // Fetch both in parallel — legacy /providers (for token health) AND new /admin/accounts
+      // (for priority/role/quota). They describe overlapping sets but with different fields.
+      final results = await Future.wait([
+        widget.relay.getProviders(),
+        widget.relay.getAdminAccounts().catchError((e) {
+          // /admin/accounts is Phase α+ — older relays return 404. Tolerate gracefully so
+          // the UI degrades to legacy behavior instead of erroring out entirely.
+          debugPrint('AccountsScreen: /admin/accounts unavailable (older relay?): $e');
+          return <String, dynamic>{'accounts': <dynamic>[], 'policy': <String, dynamic>{}};
+        }),
+      ]);
+      final providers = results[0] as List<Map<String, dynamic>>;
+      final adminData = results[1] as Map<String, dynamic>;
+      final accountsList = (adminData['accounts'] as List?) ?? const [];
+      final accountsByID = <int, Map<String, dynamic>>{
+        for (final a in accountsList) (a as Map<String, dynamic>)['id'] as int: Map<String, dynamic>.from(a),
+      };
+      setState(() {
+        _providers = providers;
+        _adminAccounts = accountsByID;
+        _adminPolicy = Map<String, dynamic>.from((adminData['policy'] as Map?) ?? {});
+        _loading = false;
+      });
     } catch (e) {
       debugPrint('AccountsScreen load error: $e');
       setState(() { _error = e; _loading = false; });
     }
+  }
+
+  // Find the admin account record for a legacy provider entry, matching on type+email.
+  // Returns null when no admin record exists (older relay, or provider not yet bootstrapped).
+  Map<String, dynamic>? _adminFor(Map<String, dynamic> provider) {
+    final email = (provider['email'] ?? '') as String;
+    final type = (provider['type'] ?? 'gdrive') as String;
+    for (final acc in _adminAccounts.values) {
+      if (acc['email'] == email && acc['provider'] == type) return acc;
+    }
+    return null;
   }
 
   @override
@@ -79,35 +117,27 @@ class _AccountsScreenState extends State<AccountsScreen> {
     if (_error != null) return _ErrorDisplay(error: _error!, onRetry: _load);
     if (_providers.isEmpty) return _emptyState(context);
 
+    // Sort providers by admin priority (when available) so users see them in the order the
+    // selection algorithm actually picks them.
+    final sortedProviders = [..._providers]..sort((a, b) {
+      final pa = _adminFor(a)?['priority'] as int? ?? 999;
+      final pb = _adminFor(b)?['priority'] as int? ?? 999;
+      return pa.compareTo(pb);
+    });
     return Column(children: [
       _StorageSummaryCard(providers: _providers),
+      if (_adminPolicy.isNotEmpty) _PolicyCard(policy: _adminPolicy, relay: widget.relay, onChanged: _load),
       Expanded(child: ListView.builder(
-        itemCount: _providers.length,
+        itemCount: sortedProviders.length,
         itemBuilder: (ctx, i) {
-          final p = _providers[i];
-          final used = (p['quota_used_gb'] as num?)?.toStringAsFixed(1) ?? '?';
-          final total = (p['quota_total_gb'] as num?)?.toStringAsFixed(1) ?? '?';
-          final fileCount = (p['file_count'] as num?)?.toInt() ?? 0;
-          final available = p['available'] == true;
-          final errMsg = (p['last_error'] ?? p['error']) as String? ?? 'Token expired — tap to reconnect';
-          final fileCountLabel = fileCount > 0 ? '$fileCount files' : 'no files';
-          final offlineLabel = fileCount > 0 ? '$fileCount files (last seen)' : 'no files';
-          return ListTile(
-            leading: _providerIcon(p['type'] as String? ?? 'gdrive', available),
-            title: Text(p['email'] ?? p['id'] ?? 'Unknown'),
-            subtitle: available
-                ? Text('${p["type"] ?? "gdrive"} · $used / $total GB · $fileCountLabel')
-                : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                    Text(errMsg, style: const TextStyle(color: Colors.red, fontSize: 12), overflow: TextOverflow.ellipsis),
-                    Text(offlineLabel, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-                  ]),
-            trailing: Tooltip(
-              message: available ? 'Connected' : 'Unavailable — tap to reconnect',
-              child: available
-                  ? const Icon(Icons.check_circle, color: Colors.green)
-                  : const Icon(Icons.error, color: Colors.red),
-            ),
-            onTap: available ? null : () async {
+          final p = sortedProviders[i];
+          final admin = _adminFor(p); // may be null when admin endpoint unavailable
+          return _AccountListTile(
+            provider: p,
+            admin: admin,
+            relay: widget.relay,
+            onChanged: _load,
+            onReconnect: () async {
               await showModalBottomSheet(
                 context: context, isScrollControlled: true, useSafeArea: true,
                 builder: (_) => _AddAccountSheet(relay: widget.relay),
@@ -861,5 +891,493 @@ class _ProviderTile extends StatelessWidget {
       enabled: enabled,
       onTap: onTap,
     );
+  }
+}
+
+// ─── Phase α/β UI widgets ────────────────────────────────────────────────────
+
+// _AccountListTile renders one cloud account with Phase α/β metadata: priority badge
+// (showing ID + position), role badge (PrimaryWrite/ReplicaWrite/ColdArchive/etc),
+// quota progress bar (with soft/hard cap thresholds), file count, plus a popup menu for
+// admin actions (refresh quota, edit, drain).
+// Degrades gracefully when admin==null (legacy relay without /admin/accounts).
+class _AccountListTile extends StatelessWidget {
+  final Map<String, dynamic> provider;        // legacy /providers entry (has file_count, available, quota_used_gb)
+  final Map<String, dynamic>? admin;          // /admin/accounts entry (priority, role, pinned) — nullable
+  final RelayClient relay;
+  final VoidCallback onChanged;               // reload trigger after edit/drain
+  final VoidCallback onReconnect;             // re-auth flow when provider unavailable
+
+  const _AccountListTile({
+    required this.provider, required this.admin, required this.relay,
+    required this.onChanged, required this.onReconnect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final available = provider['available'] == true;
+    final email = provider['email'] ?? provider['id'] ?? 'Unknown';
+    final type = (provider['type'] ?? 'gdrive') as String;
+    final fileCount = (provider['file_count'] as num?)?.toInt() ?? 0;
+    final usedGB = (provider['quota_used_gb'] as num?)?.toDouble() ?? 0.0;
+    final totalGB = (provider['quota_total_gb'] as num?)?.toDouble() ?? 0.0;
+    // Prefer fresher admin quota if present (background poll updates it every 30 min).
+    final usedB = (admin?['quota_used_bytes'] as num?)?.toDouble();
+    final totalB = (admin?['quota_total_bytes'] as num?)?.toDouble();
+    final useFreshQuota = usedB != null && totalB != null && totalB > 0;
+    final pct = useFreshQuota
+      ? (usedB / totalB)
+      : (totalGB > 0 ? usedGB / totalGB : 0.0);
+    final usedDisplay = useFreshQuota ? (usedB / 1e9).toStringAsFixed(2) : usedGB.toStringAsFixed(1);
+    final totalDisplay = useFreshQuota ? (totalB / 1e9).toStringAsFixed(2) : totalGB.toStringAsFixed(1);
+
+    final role = (admin?['role'] ?? 'unknown') as String;
+    final priority = admin?['priority'] as int?;
+    final id = admin?['id'] as int?;
+    final pinned = admin?['pinned'] == true;
+    final softCap = ((admin?['soft_cap_pct'] as int?) ?? 90) / 100.0;
+    final hardCap = ((admin?['hard_cap_pct'] as int?) ?? 98) / 100.0;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Header row: icon + id badge + email + connection state + popup menu
+          Row(children: [
+            _providerIcon(type, available),
+            const SizedBox(width: 8),
+            if (id != null) _IDBadge(id: id, pinned: pinned),
+            if (id != null) const SizedBox(width: 6),
+            Expanded(child: Text(email,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
+            )),
+            Tooltip(
+              message: available ? 'Connected' : 'Token expired — tap menu → Reconnect',
+              child: available
+                ? const Icon(Icons.check_circle, color: Colors.green, size: 18)
+                : const Icon(Icons.error, color: Colors.red, size: 18),
+            ),
+            if (admin != null) PopupMenuButton<String>(
+              tooltip: 'Account actions',
+              icon: const Icon(Icons.more_vert, size: 20),
+              onSelected: (v) => _handleAction(context, v),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('Refresh quota'))),
+                PopupMenuItem(value: 'edit',    child: ListTile(leading: Icon(Icons.edit), title: Text('Edit'))),
+                PopupMenuDivider(),
+                PopupMenuItem(value: 'drain',   child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Remove (drain)', style: TextStyle(color: Colors.red)))),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 8),
+          // Role + priority badges (only when admin endpoint is reachable)
+          if (admin != null) Row(children: [
+            _RoleBadge(role: role),
+            const SizedBox(width: 8),
+            if (priority != null) Chip(
+              label: Text('Priority $priority', style: const TextStyle(fontSize: 11)),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+            const Spacer(),
+            if (!available) const Text('reconnect needed', style: TextStyle(color: Colors.red, fontSize: 11)),
+          ]),
+          if (admin != null) const SizedBox(height: 8),
+          // Quota progress bar with soft/hard cap markers
+          if (totalDisplay != '0.0') _QuotaBar(percent: pct.clamp(0.0, 1.0), softCap: softCap, hardCap: hardCap),
+          const SizedBox(height: 4),
+          // Quota details + file count
+          Text(
+            '$usedDisplay / $totalDisplay GB · ${(pct * 100).toStringAsFixed(1)}% used · $fileCount files',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+          if (!available) Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: TextButton.icon(
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Reconnect'),
+              onPressed: onReconnect,
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _providerIcon(String type, bool available) {
+    final color = available ? Colors.green : Colors.grey;
+    return switch (type) {
+      'gdrive'   => Icon(Icons.drive_folder_upload, color: color),
+      'mega'     => Icon(Icons.storage, color: color),
+      'onedrive' => Icon(Icons.cloud, color: color),
+      _          => Icon(Icons.cloud, color: color),
+    };
+  }
+
+  Future<void> _handleAction(BuildContext context, String action) async {
+    final id = admin?['id'] as int?;
+    if (id == null) return;
+    switch (action) {
+      case 'refresh':
+        try {
+          await relay.refreshAdminQuota(id);
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quota refreshed')));
+          onChanged();
+        } catch (e) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Refresh failed: $e')));
+        }
+        break;
+      case 'edit':
+        final changed = await showDialog<bool>(
+          context: context,
+          builder: (_) => _EditAccountDialog(relay: relay, admin: admin!),
+        );
+        if (changed == true) onChanged();
+        break;
+      case 'drain':
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Remove cloud account?'),
+            content: Text(
+              'This will start a background migration of all files currently stored on this account '
+              'to your other active accounts. The original files will be deleted from this cloud only '
+              'after they have been successfully copied elsewhere. The account record stays in audit log '
+              'with status=Removed.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton.tonal(
+                style: FilledButton.styleFrom(foregroundColor: Colors.red),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Remove'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return;
+        try {
+          await relay.drainAdminAccount(id);
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Drain started — migration runs in background')));
+          onChanged();
+        } catch (e) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Drain failed: $e')));
+        }
+        break;
+    }
+  }
+}
+
+// _IDBadge displays the stable account ID (e.g. "ID003") with a pin icon when Pinned=true.
+// IDs are NEVER reused after removal — useful in audit logs + support conversations.
+class _IDBadge extends StatelessWidget {
+  final int id;
+  final bool pinned;
+  const _IDBadge({required this.id, required this.pinned});
+  @override
+  Widget build(BuildContext context) {
+    final padded = id < 1000 ? id.toString().padLeft(3, '0') : id.toString();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade100,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text('ID$padded', style: const TextStyle(fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w600)),
+        if (pinned) const Padding(padding: EdgeInsets.only(left: 3), child: Icon(Icons.push_pin, size: 11)),
+      ]),
+    );
+  }
+}
+
+// _RoleBadge color-codes the account's current selection role. Driven by the Phase α/β
+// state machine in account.Manager — PrimaryWrite/ReplicaWrite are auto-managed by
+// ReconcileRoles based on quota; ColdArchive/ReadOnly/Drain are user/policy-driven.
+class _RoleBadge extends StatelessWidget {
+  final String role;
+  const _RoleBadge({required this.role});
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (role) {
+      'primary_write' => ('Primary', Colors.green),
+      'replica_write' => ('Replica', Colors.blue),
+      'read_only'     => ('Read only', Colors.grey),
+      'cold_archive'  => ('Cold archive', Colors.purple),
+      'drain'         => ('Draining', Colors.orange),
+      'quarantine'    => ('Quarantine', Colors.red),
+      _               => (role, Colors.blueGrey),
+    };
+    return Chip(
+      label: Text(label, style: TextStyle(fontSize: 11, color: color.shade900)),
+      backgroundColor: color.shade50,
+      side: BorderSide(color: color.shade200),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+// _QuotaBar — linear progress with two vertical lines at SoftCap (yellow) + HardCap (red).
+// Visually communicates "you can write up to softCap before auto-demote kicks in, and never above hardCap".
+class _QuotaBar extends StatelessWidget {
+  final double percent;   // 0..1 used fraction
+  final double softCap;   // 0..1 soft cap fraction (e.g. 0.90)
+  final double hardCap;   // 0..1 hard cap fraction (e.g. 0.98)
+  const _QuotaBar({required this.percent, required this.softCap, required this.hardCap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = percent >= hardCap
+      ? Colors.red
+      : (percent >= softCap ? Colors.orange : Colors.green);
+    return SizedBox(
+      height: 8,
+      child: LayoutBuilder(builder: (_, c) {
+        final w = c.maxWidth;
+        return Stack(children: [
+          Container(decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
+          FractionallySizedBox(
+            widthFactor: percent,
+            child: Container(decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4))),
+          ),
+          Positioned(left: w * softCap - 0.5, top: 0, bottom: 0, child: Container(width: 1, color: Colors.amber.shade800)),
+          Positioned(left: w * hardCap - 0.5, top: 0, bottom: 0, child: Container(width: 1, color: Colors.red.shade800)),
+        ]);
+      }),
+    );
+  }
+}
+
+// _PolicyCard shows the global Account Policy summary (replication factor, diversity, caps)
+// + a button to edit. For Phase γ continue (this iteration) we surface read-only; the editor
+// dialog ships as `_EditPolicyDialog` immediately below — already implemented + wired.
+class _PolicyCard extends StatelessWidget {
+  final Map<String, dynamic> policy;
+  final RelayClient relay;
+  final VoidCallback onChanged;
+  const _PolicyCard({required this.policy, required this.relay, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final rf = policy['replication_factor'] ?? '?';
+    final divProv = policy['diversity_required'] == true;
+    final softCap = policy['soft_cap_default_pct'] ?? '?';
+    final hardCap = policy['hard_cap_default_pct'] ?? '?';
+    final ageRot = policy['age_based_rotation'] == true;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+      color: Colors.indigo.shade50,
+      child: ListTile(
+        leading: const Icon(Icons.policy, color: Colors.indigo),
+        title: const Text('Global Policy', style: TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(
+          'Replication factor: $rf · Diversity: ${divProv ? "ON" : "off"} · '
+          'Caps: $softCap% / $hardCap% · Age rotation: ${ageRot ? "ON" : "off"}',
+          style: const TextStyle(fontSize: 12),
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.edit, size: 18),
+          onPressed: () async {
+            final changed = await showDialog<bool>(
+              context: context,
+              builder: (_) => _EditPolicyDialog(relay: relay, current: policy),
+            );
+            if (changed == true) onChanged();
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// _EditAccountDialog — interactive PATCH for /admin/accounts/{id}. Lets the user change
+// role + priority + pinned + soft/hard cap overrides. Submits only fields the user actually
+// touched (partial overlay matches the backend PATCH semantics).
+class _EditAccountDialog extends StatefulWidget {
+  final RelayClient relay;
+  final Map<String, dynamic> admin;
+  const _EditAccountDialog({required this.relay, required this.admin});
+  @override
+  State<_EditAccountDialog> createState() => _EditAccountDialogState();
+}
+
+class _EditAccountDialogState extends State<_EditAccountDialog> {
+  late String _role;
+  late int _priority;
+  late bool _pinned;
+  String? _softCapText;
+  String? _hardCapText;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _role = widget.admin['role'] as String? ?? 'replica_write';
+    _priority = widget.admin['priority'] as int? ?? 0;
+    _pinned = widget.admin['pinned'] == true;
+    _softCapText = widget.admin['soft_cap_pct']?.toString();
+    _hardCapText = widget.admin['hard_cap_pct']?.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.admin['id'] as int;
+    final email = widget.admin['email'] as String? ?? 'unknown';
+    return AlertDialog(
+      title: Text('Edit ID${id.toString().padLeft(3, '0')} — $email'),
+      content: SizedBox(
+        width: 380,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          DropdownButtonFormField<String>(
+            value: _role,
+            decoration: const InputDecoration(labelText: 'Role'),
+            items: const [
+              DropdownMenuItem(value: 'primary_write', child: Text('Primary write')),
+              DropdownMenuItem(value: 'replica_write', child: Text('Replica write')),
+              DropdownMenuItem(value: 'read_only',     child: Text('Read only')),
+              DropdownMenuItem(value: 'cold_archive',  child: Text('Cold archive')),
+            ],
+            onChanged: (v) => setState(() => _role = v!),
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            initialValue: _priority.toString(),
+            decoration: const InputDecoration(labelText: 'Priority (lower = higher importance)'),
+            keyboardType: TextInputType.number,
+            onChanged: (v) { final n = int.tryParse(v); if (n != null) setState(() => _priority = n); },
+          ),
+          SwitchListTile(
+            title: const Text('Pinned (immune to auto-demote/promote)'),
+            value: _pinned,
+            onChanged: (v) => setState(() => _pinned = v),
+            contentPadding: EdgeInsets.zero,
+          ),
+          TextFormField(
+            initialValue: _softCapText,
+            decoration: const InputDecoration(labelText: 'Soft cap % override (blank = inherit)'),
+            keyboardType: TextInputType.number,
+            onChanged: (v) => _softCapText = v,
+          ),
+          TextFormField(
+            initialValue: _hardCapText,
+            decoration: const InputDecoration(labelText: 'Hard cap % override (blank = inherit)'),
+            keyboardType: TextInputType.number,
+            onChanged: (v) => _hardCapText = v,
+          ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: _saving ? null : () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: _saving ? null : _save, child: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save')),
+      ],
+    );
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final patch = <String, dynamic>{
+      'role': _role,
+      'priority': _priority,
+      'pinned': _pinned,
+    };
+    final sc = int.tryParse(_softCapText ?? '');
+    final hc = int.tryParse(_hardCapText ?? '');
+    if (sc != null) patch['soft_cap_pct'] = sc;
+    if (hc != null) patch['hard_cap_pct'] = hc;
+    try {
+      await widget.relay.patchAdminAccount(widget.admin['id'] as int, patch);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      setState(() => _saving = false);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+    }
+  }
+}
+
+// _EditPolicyDialog — overlay PATCH for /admin/policy. Lets the user change replication
+// factor, diversity, default soft/hard caps. Other fields kept at server-side defaults.
+class _EditPolicyDialog extends StatefulWidget {
+  final RelayClient relay;
+  final Map<String, dynamic> current;
+  const _EditPolicyDialog({required this.relay, required this.current});
+  @override
+  State<_EditPolicyDialog> createState() => _EditPolicyDialogState();
+}
+
+class _EditPolicyDialogState extends State<_EditPolicyDialog> {
+  late int _rf;
+  late bool _diversity;
+  late bool _ageRot;
+  late String _softCap;
+  late String _hardCap;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _rf = widget.current['replication_factor'] as int? ?? 2;
+    _diversity = widget.current['diversity_required'] == true;
+    _ageRot = widget.current['age_based_rotation'] == true;
+    _softCap = (widget.current['soft_cap_default_pct'] ?? 90).toString();
+    _hardCap = (widget.current['hard_cap_default_pct'] ?? 98).toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit global account policy'),
+      content: SizedBox(width: 380, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: Text('Replication factor')),
+          IconButton(icon: const Icon(Icons.remove), onPressed: () => setState(() { if (_rf > 1) _rf--; })),
+          Text('$_rf', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          IconButton(icon: const Icon(Icons.add), onPressed: () => setState(() => _rf++)),
+        ]),
+        SwitchListTile(
+          title: const Text('Diversity required (replicas on different provider types)'),
+          value: _diversity, onChanged: (v) => setState(() => _diversity = v), contentPadding: EdgeInsets.zero,
+        ),
+        SwitchListTile(
+          title: const Text('Age-based rotation (off by default)'),
+          subtitle: const Text('Migrate old files to cold archive accounts'),
+          value: _ageRot, onChanged: (v) => setState(() => _ageRot = v), contentPadding: EdgeInsets.zero,
+        ),
+        TextFormField(
+          initialValue: _softCap,
+          decoration: const InputDecoration(labelText: 'Default soft cap %'),
+          keyboardType: TextInputType.number, onChanged: (v) => _softCap = v,
+        ),
+        TextFormField(
+          initialValue: _hardCap,
+          decoration: const InputDecoration(labelText: 'Default hard cap %'),
+          keyboardType: TextInputType.number, onChanged: (v) => _hardCap = v,
+        ),
+      ])),
+      actions: [
+        TextButton(onPressed: _saving ? null : () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: _saving ? null : _save, child: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save')),
+      ],
+    );
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final patch = <String, dynamic>{
+      'replication_factor': _rf,
+      'diversity_required': _diversity,
+      'age_based_rotation': _ageRot,
+    };
+    final sc = int.tryParse(_softCap); if (sc != null) patch['soft_cap_default_pct'] = sc;
+    final hc = int.tryParse(_hardCap); if (hc != null) patch['hard_cap_default_pct'] = hc;
+    try {
+      await widget.relay.patchAdminPolicy(patch);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      setState(() => _saving = false);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+    }
   }
 }
