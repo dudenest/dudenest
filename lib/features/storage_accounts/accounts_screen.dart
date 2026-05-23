@@ -124,29 +124,60 @@ class _AccountsScreenState extends State<AccountsScreen> {
       final pb = _adminFor(b)?['priority'] as int? ?? 999;
       return pa.compareTo(pb);
     });
+    // ReorderableListView enabled only when admin metadata is present (Phase α/β/γ relay).
+    // Legacy relays (no _adminAccounts) fall back to plain ListView — drag-drop hidden because
+    // there's no Priority concept to reorder.
+    final canReorder = _adminAccounts.isNotEmpty && sortedProviders.every((p) => _adminFor(p) != null);
     return Column(children: [
       _StorageSummaryCard(providers: _providers),
       if (_adminPolicy.isNotEmpty) _PolicyCard(policy: _adminPolicy, relay: widget.relay, onChanged: _load),
-      Expanded(child: ListView.builder(
-        itemCount: sortedProviders.length,
-        itemBuilder: (ctx, i) {
-          final p = sortedProviders[i];
-          final admin = _adminFor(p); // may be null when admin endpoint unavailable
-          return _AccountListTile(
-            provider: p,
-            admin: admin,
-            relay: widget.relay,
-            onChanged: _load,
-            onReconnect: () async {
-              await showModalBottomSheet(
-                context: context, isScrollControlled: true, useSafeArea: true,
-                builder: (_) => _AddAccountSheet(relay: widget.relay),
-              );
-              _load();
+      Expanded(child: canReorder
+        ? ReorderableListView.builder(
+            itemCount: sortedProviders.length,
+            buildDefaultDragHandles: true, // long-press anywhere on tile or use trailing handle
+            onReorder: (oldIdx, newIdx) async {
+              if (newIdx > oldIdx) newIdx -= 1; // Flutter quirk: insertion index after removal
+              final movedProvider = sortedProviders[oldIdx];
+              final newOrderProviders = [...sortedProviders]..removeAt(oldIdx)..insert(newIdx, movedProvider);
+              final newIDs = newOrderProviders.map((p) => _adminFor(p)!['id'] as int).toList();
+              try {
+                await widget.relay.reorderAdminAccounts(newIDs);
+                await _load();
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Reorder failed: $e'), backgroundColor: Colors.red),
+                );
+              }
             },
-          );
-        },
-      )),
+            itemBuilder: (ctx, i) {
+              final p = sortedProviders[i];
+              final admin = _adminFor(p);
+              final tileKey = ValueKey('account-${admin!['id']}'); // unique stable key required by ReorderableListView
+              return _AccountListTile(
+                key: tileKey, provider: p, admin: admin, relay: widget.relay, onChanged: _load,
+                onReconnect: () async {
+                  await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
+                    builder: (_) => _AddAccountSheet(relay: widget.relay));
+                  _load();
+                },
+              );
+            },
+          )
+        : ListView.builder(
+            itemCount: sortedProviders.length,
+            itemBuilder: (ctx, i) {
+              final p = sortedProviders[i];
+              final admin = _adminFor(p);
+              return _AccountListTile(
+                provider: p, admin: admin, relay: widget.relay, onChanged: _load,
+                onReconnect: () async {
+                  await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
+                    builder: (_) => _AddAccountSheet(relay: widget.relay));
+                  _load();
+                },
+              );
+            },
+          )),
     ]);
   }
 
@@ -909,6 +940,7 @@ class _AccountListTile extends StatelessWidget {
   final VoidCallback onReconnect;             // re-auth flow when provider unavailable
 
   const _AccountListTile({
+    super.key, // required by ReorderableListView for stable identity across reorder
     required this.provider, required this.admin, required this.relay,
     required this.onChanged, required this.onReconnect,
   });
