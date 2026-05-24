@@ -1493,7 +1493,7 @@ class _EditPolicyDialogState extends State<_EditPolicyDialog> {
 }
 
 // _DrainProgressIndicator polls /admin/accounts/{id}/drain-progress every 5s while widget is mounted.
-// Renders a LinearProgressIndicator + "shards_migrated/shards_to_migrate (%)" caption.
+// Renders a LinearProgressIndicator + "replicas_migrated/replicas_to_migrate (%)" caption.
 // Stops polling when in_progress=false (worker reports done) or widget disposed.
 // Phase γ continue (s319).
 class _DrainProgressIndicator extends StatefulWidget {
@@ -1543,9 +1543,9 @@ class _DrainProgressIndicatorState extends State<_DrainProgressIndicator> {
         Text('Drain initiated — waiting for first sweep (≤2 min)', style: TextStyle(color: Colors.orange.shade700, fontSize: 11)),
       ]);
     }
-    final migrated = (snap['shards_migrated'] as num?)?.toInt() ?? 0;
-    final total = (snap['shards_to_migrate'] as num?)?.toInt() ?? 0;
-    final failed = (snap['shards_failed'] as num?)?.toInt() ?? 0;
+    final migrated = (snap['replicas_migrated'] as num?)?.toInt() ?? 0;
+    final total = (snap['replicas_to_migrate'] as num?)?.toInt() ?? 0;
+    final failed = (snap['replicas_failed'] as num?)?.toInt() ?? 0;
     final lastErr = snap['last_err'] as String?;
     final percent = total > 0 ? migrated / total : 0.0;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

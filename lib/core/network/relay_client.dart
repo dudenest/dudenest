@@ -102,7 +102,7 @@ class RelayClient {
   }
 
   // DELETE /admin/accounts/{id} — flips the account to Role=Drain. The relay's
-  // background drain worker then migrates shards to other accounts and finally
+  // background drain worker then migrates replicas to other accounts and finally
   // sets Status=Removed when done. Phase γ (v0.19.0+).
   Future<Map<String, dynamic>> drainAdminAccount(int id) async {
     final resp = await _http.delete(
@@ -125,7 +125,7 @@ class RelayClient {
 
   // GET /admin/accounts/{id}/drain-progress — returns live drain worker progress for one account.
   // Response shape: {account_id, role, status, in_progress, snapshot: {started_at, file_maps_scanned,
-  // shards_to_migrate, shards_migrated, shards_failed, last_err} | null}.
+  // replicas_to_migrate, replicas_migrated, replicas_failed, last_err} | null}.
   // snapshot is null when worker hasn't started its first sweep yet (account is Drain but waiting).
   // Phase γ (v0.20.1+).
   Future<Map<String, dynamic>> getDrainProgress(int id) async {
@@ -166,7 +166,7 @@ class RelayClient {
     return _processResponse(resp, 'POST /files/upload') as Map<String, dynamic>;
   }
 
-  // GET /files/{id}/map — returns full FileMap (chunks, shards, locations)
+  // GET /files/{id}/map — returns full FileMap (replicas, locations)
   Future<Map<String, dynamic>> getFileMap(String fileId) async {
     final resp = await _http.get(Uri.parse('$baseUrl/files/$fileId/map'), headers: _headers);
     return _processResponse(resp, 'GET /files/$fileId/map') as Map<String, dynamic>;
