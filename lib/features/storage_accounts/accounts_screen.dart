@@ -25,6 +25,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Map<int, Map<String, dynamic>> _adminAccounts = {};
   // Global policy (replication_factor, soft_cap, etc.) — surfaced in a header card.
   Map<String, dynamic> _adminPolicy = {};
+  // s320 Phase 1: per-provider scan engine state (last scan time, files indexed, errors).
+  // Keyed by provider ID (e.g. "gdrive:user@gmail.com"). Empty when scan endpoint unreachable.
+  Map<String, Map<String, dynamic>> _scanStatus = {};
   bool _loading = true;
   Object? _error;
 
@@ -34,8 +37,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      // Fetch both in parallel — legacy /providers (for token health) AND new /admin/accounts
-      // (for priority/role/quota). They describe overlapping sets but with different fields.
+      // Fetch in parallel: legacy /providers (token health) + /admin/accounts (priority/role/quota) + /admin/scan/status (s320 Phase 1).
       final results = await Future.wait([
         widget.relay.getProviders(),
         widget.relay.getAdminAccounts().catchError((e) {
@@ -44,23 +46,40 @@ class _AccountsScreenState extends State<AccountsScreen> {
           debugPrint('AccountsScreen: /admin/accounts unavailable (older relay?): $e');
           return <String, dynamic>{'accounts': <dynamic>[], 'policy': <String, dynamic>{}};
         }),
+        widget.relay.getScanStatus().catchError((e) { // s320 Phase 1: tolerate older relays without /admin/scan
+          debugPrint('AccountsScreen: /admin/scan/status unavailable: $e');
+          return <String, dynamic>{};
+        }),
       ]);
       final providers = results[0] as List<Map<String, dynamic>>;
       final adminData = results[1] as Map<String, dynamic>;
+      final scanData = results[2] as Map<String, dynamic>;
       final accountsList = (adminData['accounts'] as List?) ?? const [];
       final accountsByID = <int, Map<String, dynamic>>{
         for (final a in accountsList) (a as Map<String, dynamic>)['id'] as int: Map<String, dynamic>.from(a),
+      };
+      // scanData shape: {providerID: {state, started_at, last_finished_at, files_discovered, ...}}
+      final scanByID = <String, Map<String, dynamic>>{
+        for (final e in scanData.entries) e.key: Map<String, dynamic>.from(e.value as Map),
       };
       setState(() {
         _providers = providers;
         _adminAccounts = accountsByID;
         _adminPolicy = Map<String, dynamic>.from((adminData['policy'] as Map?) ?? {});
+        _scanStatus = scanByID;
         _loading = false;
       });
     } catch (e) {
       debugPrint('AccountsScreen load error: $e');
       setState(() { _error = e; _loading = false; });
     }
+  }
+
+  // s320 Phase 1: lookup scan state for a provider — matches on "type:email" provider ID.
+  Map<String, dynamic>? _scanFor(Map<String, dynamic> provider) {
+    final type = (provider['type'] ?? 'gdrive') as String;
+    final email = (provider['email'] ?? '') as String;
+    return _scanStatus['$type:$email'];
   }
 
   // Find the admin account record for a legacy provider entry, matching on type+email.
@@ -127,19 +146,23 @@ class _AccountsScreenState extends State<AccountsScreen> {
     // ReorderableListView enabled only when admin metadata is present (Phase α/β/γ relay).
     // Legacy relays (no _adminAccounts) fall back to plain ListView — drag-drop hidden because
     // there's no Priority concept to reorder.
-    final canReorder = _adminAccounts.isNotEmpty && sortedProviders.every((p) => _adminFor(p) != null);
+    // s320 fix #2: relax canReorder — only require ANY provider to have admin metadata (was: every).
+    // Pre-fix: a single legacy provider without admin entry disabled drag-drop for the whole list.
+    // Reorder skips providers without admin id (sent as no-op).
+    final canReorder = _adminAccounts.isNotEmpty && sortedProviders.any((p) => _adminFor(p) != null);
     return Column(children: [
       _StorageSummaryCard(providers: _providers),
       if (_adminPolicy.isNotEmpty) _PolicyCard(policy: _adminPolicy, relay: widget.relay, onChanged: _load),
       Expanded(child: canReorder
         ? ReorderableListView.builder(
             itemCount: sortedProviders.length,
-            buildDefaultDragHandles: true, // long-press anywhere on tile or use trailing handle
+            buildDefaultDragHandles: false, // s320 fix #2: explicit drag handle (no long-press timing surprises on web/desktop)
             onReorder: (oldIdx, newIdx) async {
               if (newIdx > oldIdx) newIdx -= 1; // Flutter quirk: insertion index after removal
               final movedProvider = sortedProviders[oldIdx];
               final newOrderProviders = [...sortedProviders]..removeAt(oldIdx)..insert(newIdx, movedProvider);
-              final newIDs = newOrderProviders.map((p) => _adminFor(p)!['id'] as int).toList();
+              // Drop providers without admin id from reorder payload — relay accepts subset (only re-prioritizes known ids).
+              final newIDs = newOrderProviders.map((p) => _adminFor(p)?['id'] as int?).whereType<int>().toList();
               try {
                 await widget.relay.reorderAdminAccounts(newIDs);
                 await _load();
@@ -152,9 +175,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
             itemBuilder: (ctx, i) {
               final p = sortedProviders[i];
               final admin = _adminFor(p);
-              final tileKey = ValueKey('account-${admin!['id']}'); // unique stable key required by ReorderableListView
+              final keyId = admin?['id'] ?? p['email'] ?? p['id'] ?? i;
+              final tileKey = ValueKey('account-$keyId'); // stable key required by ReorderableListView (handles admin==null)
               return _AccountListTile(
-                key: tileKey, provider: p, admin: admin, relay: widget.relay, onChanged: _load,
+                key: tileKey, provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
+                dragIndex: i, // s320 fix #2: enables explicit drag handle in tile
                 onReconnect: () async {
                   await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
                     builder: (_) => _AddAccountSheet(relay: widget.relay));
@@ -169,7 +194,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               final p = sortedProviders[i];
               final admin = _adminFor(p);
               return _AccountListTile(
-                provider: p, admin: admin, relay: widget.relay, onChanged: _load,
+                provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
                 onReconnect: () async {
                   await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
                     builder: (_) => _AddAccountSheet(relay: widget.relay));
@@ -935,14 +960,17 @@ class _ProviderTile extends StatelessWidget {
 class _AccountListTile extends StatelessWidget {
   final Map<String, dynamic> provider;        // legacy /providers entry (has file_count, available, quota_used_gb)
   final Map<String, dynamic>? admin;          // /admin/accounts entry (priority, role, pinned) — nullable
+  final Map<String, dynamic>? scan;           // s320 Phase 1: scan engine snapshot (state, last_finished_at, files_discovered)
   final RelayClient relay;
   final VoidCallback onChanged;               // reload trigger after edit/drain
   final VoidCallback onReconnect;             // re-auth flow when provider unavailable
+  final int? dragIndex;                       // s320 fix #2: non-null when in ReorderableListView → renders drag handle
 
   const _AccountListTile({
     super.key, // required by ReorderableListView for stable identity across reorder
     required this.provider, required this.admin, required this.relay,
     required this.onChanged, required this.onReconnect,
+    this.scan, this.dragIndex,
   });
 
   @override
@@ -975,8 +1003,13 @@ class _AccountListTile extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // Header row: icon + id badge + email + connection state + popup menu
+          // Header row: drag handle (when reorderable) + icon + id badge + email + connection state + popup menu
           Row(children: [
+            if (dragIndex != null) ReorderableDragStartListener(
+              index: dragIndex!,
+              child: const Padding(padding: EdgeInsets.only(right: 8),
+                child: Icon(Icons.drag_indicator, color: Colors.grey, size: 22)),
+            ), // s320 fix #2: explicit drag handle — mouse-down triggers reorder immediately (no long-press wait)
             _providerIcon(type, available),
             const SizedBox(width: 8),
             if (id != null) _IDBadge(id: id, pinned: pinned),
@@ -997,6 +1030,7 @@ class _AccountListTile extends StatelessWidget {
               onSelected: (v) => _handleAction(context, v),
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('Refresh quota'))),
+                PopupMenuItem(value: 'scan',    child: ListTile(leading: Icon(Icons.cloud_sync), title: Text('Scan cloud now'))), // s320 Phase 1
                 PopupMenuItem(value: 'edit',    child: ListTile(leading: Icon(Icons.edit), title: Text('Edit'))),
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'drain',   child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Remove (drain)', style: TextStyle(color: Colors.red)))),
@@ -1030,6 +1064,8 @@ class _AccountListTile extends StatelessWidget {
             '$usedDisplay / $totalDisplay GB · ${(pct * 100).toStringAsFixed(1)}% used · $fileCount files',
             style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
           ),
+          // s320 Phase 1: cloud-side scan engine status (last scan, indexed count, current state)
+          if (scan != null) _ScanStatusLine(scan: scan!),
           if (!available) Padding(
             padding: const EdgeInsets.only(top: 8),
             child: TextButton.icon(
@@ -1064,6 +1100,21 @@ class _AccountListTile extends StatelessWidget {
           onChanged();
         } catch (e) {
           if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Refresh failed: $e')));
+        }
+        break;
+      case 'scan': // s320 Phase 1: manual cloud-side scan trigger (discovers files added directly to cloud)
+        final providerID = '${provider['type'] ?? 'gdrive'}:${provider['email'] ?? provider['id']}';
+        try {
+          final st = await relay.startScan(providerID);
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Scan started — ${st['state'] ?? 'running'}. Files will appear in /Files as discovered.'),
+              duration: const Duration(seconds: 4)));
+          // Reload after a beat so the new files_discovered counter starts showing up
+          await Future.delayed(const Duration(seconds: 2));
+          onChanged();
+        } catch (e) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Scan failed: $e'), backgroundColor: Colors.red));
         }
         break;
       case 'edit':
@@ -1560,5 +1611,52 @@ class _DrainProgressIndicatorState extends State<_DrainProgressIndicator> {
       ),
       if (lastErr != null && lastErr.isNotEmpty) Text('Last error: $lastErr', style: const TextStyle(color: Colors.red, fontSize: 10)),
     ]);
+  }
+}
+
+// _ScanStatusLine renders compact P5c scan engine status inline in a tile:
+// "Cloud scan: 23 files indexed · 12 min ago" or "Scanning… 47 discovered so far" depending on state.
+// s320 Phase 1.
+class _ScanStatusLine extends StatelessWidget {
+  final Map<String, dynamic> scan;
+  const _ScanStatusLine({required this.scan});
+  @override
+  Widget build(BuildContext context) {
+    final state = (scan['state'] ?? 'idle') as String;
+    final discovered = (scan['files_discovered'] as num?)?.toInt() ?? 0;
+    final indexed = (scan['files_newly_indexed'] as num?)?.toInt() ?? 0;
+    final errors = (scan['errors'] as num?)?.toInt() ?? 0;
+    final lastErr = scan['last_error'] as String?;
+    final lastFinished = scan['last_finished_at'] as String?;
+    Color color = Colors.grey.shade600;
+    IconData icon = Icons.cloud_done;
+    String text;
+    if (state == 'running') {
+      color = Colors.blue.shade700; icon = Icons.cloud_sync;
+      text = 'Scanning cloud… $discovered files discovered';
+    } else if (state == 'error') {
+      color = Colors.red; icon = Icons.cloud_off;
+      text = 'Scan error${lastErr != null ? ": $lastErr" : ""} · tap menu → Scan cloud now';
+    } else if (lastFinished != null && lastFinished.isNotEmpty && !lastFinished.startsWith('0001-')) {
+      final ago = _formatAgo(DateTime.tryParse(lastFinished));
+      text = 'Cloud scan: $discovered indexed${indexed > 0 ? " (+$indexed new)" : ""}'
+        '${errors > 0 ? " · $errors errors" : ""} · last scan $ago';
+    } else {
+      icon = Icons.cloud_queue;
+      text = 'Cloud not yet scanned — tap menu → Scan cloud now';
+    }
+    return Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
+      Icon(icon, size: 13, color: color),
+      const SizedBox(width: 4),
+      Expanded(child: Text(text, style: TextStyle(color: color, fontSize: 11), overflow: TextOverflow.ellipsis)),
+    ]));
+  }
+  static String _formatAgo(DateTime? t) {
+    if (t == null) return 'never';
+    final d = DateTime.now().toUtc().difference(t.toUtc());
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    return '${d.inDays}d ago';
   }
 }

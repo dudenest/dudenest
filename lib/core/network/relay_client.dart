@@ -136,6 +136,30 @@ class RelayClient {
     return _processResponse(resp, 'GET /admin/accounts/$id/drain-progress') as Map<String, dynamic>;
   }
 
+  // GET /admin/scan/status — P5c scan engine state map: {providerID: {state, started_at, last_finished_at,
+  // files_discovered, files_newly_indexed, files_skipped, errors, last_error}}. Drives Sync Status surface
+  // and per-account "last scanned" indicator. s320 Phase 1.
+  Future<Map<String, dynamic>> getScanStatus() async {
+    final resp = await _http.get(Uri.parse('$baseUrl/admin/scan/status'), headers: _headers);
+    return _processResponse(resp, 'GET /admin/scan/status') as Map<String, dynamic>;
+  }
+  // POST /admin/scan/start?provider=<id> — kick off (or resume) cloud-side scan for one provider.
+  // Scanner discovers files added directly to the cloud (outside dudenest), registers them as Foreign FileMaps
+  // so they appear in /files. Idempotent: dedup by CloudID skips already-indexed entries.
+  Future<Map<String, dynamic>> startScan(String providerID) async {
+    final resp = await _http.post(
+      Uri.parse('$baseUrl/admin/scan/start?provider=${Uri.encodeQueryComponent(providerID)}'),
+      headers: _headers);
+    return _processResponse(resp, 'POST /admin/scan/start') as Map<String, dynamic>;
+  }
+  // POST /admin/scan/pause?provider=<id> — settles within seconds at next folder boundary.
+  Future<Map<String, dynamic>> pauseScan(String providerID) async {
+    final resp = await _http.post(
+      Uri.parse('$baseUrl/admin/scan/pause?provider=${Uri.encodeQueryComponent(providerID)}'),
+      headers: _headers);
+    return _processResponse(resp, 'POST /admin/scan/pause') as Map<String, dynamic>;
+  }
+
   // PATCH /admin/policy — overlay merge of any subset of AccountPolicyConfig fields
   // (replication_factor, diversity_required, soft_cap_default_pct, etc.). Returns
   // the merged + persisted policy.
