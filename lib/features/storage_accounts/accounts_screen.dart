@@ -1017,6 +1017,11 @@ class _AccountListTile extends StatelessWidget {
             if (!available) const Text('reconnect needed', style: TextStyle(color: Colors.red, fontSize: 11)),
           ]),
           if (admin != null) const SizedBox(height: 8),
+          // Drain progress (only when role=drain — Phase γ continue)
+          if (admin != null && role == 'drain' && id != null) Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _DrainProgressIndicator(relay: relay, accountID: id),
+          ),
           // Quota progress bar with soft/hard cap markers
           if (totalDisplay != '0.0') _QuotaBar(percent: pct.clamp(0.0, 1.0), softCap: softCap, hardCap: hardCap),
           const SizedBox(height: 4),
@@ -1411,5 +1416,76 @@ class _EditPolicyDialogState extends State<_EditPolicyDialog> {
       setState(() => _saving = false);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
     }
+  }
+}
+
+// _DrainProgressIndicator polls /admin/accounts/{id}/drain-progress every 5s while widget is mounted.
+// Renders a LinearProgressIndicator + "shards_migrated/shards_to_migrate (%)" caption.
+// Stops polling when in_progress=false (worker reports done) or widget disposed.
+// Phase γ continue (s319).
+class _DrainProgressIndicator extends StatefulWidget {
+  final RelayClient relay;
+  final int accountID;
+  const _DrainProgressIndicator({required this.relay, required this.accountID});
+  @override State<_DrainProgressIndicator> createState() => _DrainProgressIndicatorState();
+}
+
+class _DrainProgressIndicatorState extends State<_DrainProgressIndicator> {
+  Map<String, dynamic>? _progress;
+  String? _error;
+  Timer? _poll;
+  bool _inProgress = true; // assume in-progress until first response says otherwise
+
+  @override
+  void initState() { super.initState(); _fetch(); _poll = Timer.periodic(const Duration(seconds: 5), (_) => _fetch()); }
+  @override
+  void dispose() { _poll?.cancel(); super.dispose(); }
+
+  Future<void> _fetch() async {
+    try {
+      final data = await widget.relay.getDrainProgress(widget.accountID);
+      if (!mounted) return;
+      setState(() {
+        _progress = data;
+        _error = null;
+        _inProgress = data['in_progress'] == true;
+        if (!_inProgress) { _poll?.cancel(); _poll = null; } // stop polling once worker reports done
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) return Text('Drain status unavailable: $_error', style: const TextStyle(color: Colors.red, fontSize: 11));
+    if (_progress == null) return const LinearProgressIndicator(); // indeterminate while first fetch in flight
+    final snap = _progress!['snapshot'] as Map<String, dynamic>?;
+    if (snap == null) {
+      // Drain initiated but worker hasn't started first sweep yet (waiting for next interval, max 2 min).
+      return Row(children: [
+        const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+        const SizedBox(width: 8),
+        Text('Drain initiated — waiting for first sweep (≤2 min)', style: TextStyle(color: Colors.orange.shade700, fontSize: 11)),
+      ]);
+    }
+    final migrated = (snap['shards_migrated'] as num?)?.toInt() ?? 0;
+    final total = (snap['shards_to_migrate'] as num?)?.toInt() ?? 0;
+    final failed = (snap['shards_failed'] as num?)?.toInt() ?? 0;
+    final lastErr = snap['last_err'] as String?;
+    final percent = total > 0 ? migrated / total : 0.0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      LinearProgressIndicator(value: total > 0 ? percent.clamp(0.0, 1.0) : null, color: Colors.orange),
+      const SizedBox(height: 4),
+      Text(
+        total == 0
+          ? 'Drain: 0 copies to migrate (account may have no files)'
+          : 'Drain: $migrated / $total copies migrated (${(percent * 100).toStringAsFixed(0)}%)'
+              + (failed > 0 ? ' · $failed failed' : ''),
+        style: TextStyle(color: Colors.orange.shade800, fontSize: 11),
+      ),
+      if (lastErr != null && lastErr.isNotEmpty) Text('Last error: $lastErr', style: const TextStyle(color: Colors.red, fontSize: 10)),
+    ]);
   }
 }

@@ -112,6 +112,19 @@ class RelayClient {
     return _processResponse(resp, 'DELETE /admin/accounts/$id') as Map<String, dynamic>;
   }
 
+  // GET /admin/accounts/{id}/drain-progress — returns live drain worker progress for one account.
+  // Response shape: {account_id, role, status, in_progress, snapshot: {started_at, file_maps_scanned,
+  // shards_to_migrate, shards_migrated, shards_failed, last_err} | null}.
+  // snapshot is null when worker hasn't started its first sweep yet (account is Drain but waiting).
+  // Phase γ (v0.20.1+).
+  Future<Map<String, dynamic>> getDrainProgress(int id) async {
+    final resp = await _http.get(
+      Uri.parse('$baseUrl/admin/accounts/$id/drain-progress'),
+      headers: _headers,
+    );
+    return _processResponse(resp, 'GET /admin/accounts/$id/drain-progress') as Map<String, dynamic>;
+  }
+
   // PATCH /admin/policy — overlay merge of any subset of AccountPolicyConfig fields
   // (replication_factor, diversity_required, soft_cap_default_pct, etc.). Returns
   // the merged + persisted policy.
