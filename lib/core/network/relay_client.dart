@@ -112,6 +112,17 @@ class RelayClient {
     return _processResponse(resp, 'DELETE /admin/accounts/$id') as Map<String, dynamic>;
   }
 
+  // POST /admin/accounts/refresh-quota — bulk on-demand quota refresh for ALL active accounts.
+  // Fire-and-forget; returns 202 immediately. Next GET /admin/accounts will see refreshed values
+  // within ~5-10s (Drive about.get latency). s319 #9.
+  Future<Map<String, dynamic>> refreshAllAdminQuota() async {
+    final resp = await _http.post(
+      Uri.parse('$baseUrl/admin/accounts/refresh-quota'),
+      headers: _headers,
+    );
+    return _processResponse(resp, 'POST /admin/accounts/refresh-quota') as Map<String, dynamic>;
+  }
+
   // GET /admin/accounts/{id}/drain-progress — returns live drain worker progress for one account.
   // Response shape: {account_id, role, status, in_progress, snapshot: {started_at, file_maps_scanned,
   // shards_to_migrate, shards_migrated, shards_failed, last_err} | null}.

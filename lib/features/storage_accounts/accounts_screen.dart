@@ -1215,16 +1215,40 @@ class _PolicyCard extends StatelessWidget {
           'Caps: $softCap% / $hardCap% · Age rotation: ${ageRot ? "ON" : "off"}',
           style: const TextStyle(fontSize: 12),
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.edit, size: 18),
-          onPressed: () async {
-            final changed = await showDialog<bool>(
-              context: context,
-              builder: (_) => _EditPolicyDialog(relay: relay, current: policy),
-            );
-            if (changed == true) onChanged();
-          },
-        ),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          // s319 #9: bulk refresh — triggers all accounts' Drive about.get concurrently;
+          // _load() refresh ~5-10s later picks up new quota values.
+          IconButton(
+            icon: const Icon(Icons.refresh, size: 18),
+            tooltip: 'Refresh quota for all accounts',
+            onPressed: () async {
+              try {
+                final resp = await relay.refreshAllAdminQuota();
+                final n = resp['accounts_queued'] ?? '?';
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Refreshing $n accounts…'), duration: const Duration(seconds: 2)),
+                );
+                await Future<void>.delayed(const Duration(seconds: 6));
+                onChanged();
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Refresh failed: $e'), backgroundColor: Colors.red),
+                );
+              }
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit, size: 18),
+            tooltip: 'Edit global policy',
+            onPressed: () async {
+              final changed = await showDialog<bool>(
+                context: context,
+                builder: (_) => _EditPolicyDialog(relay: relay, current: policy),
+              );
+              if (changed == true) onChanged();
+            },
+          ),
+        ]),
       ),
     );
   }
@@ -1247,7 +1271,13 @@ class _EditAccountDialogState extends State<_EditAccountDialog> {
   late bool _pinned;
   String? _softCapText;
   String? _hardCapText;
+  // s319 #7: forward-compat fields (F3 deep archive + F4 multi-region + content-type routing)
+  String? _regionText;
+  int? _compressionLevel;
+  Set<String> _acceptsContentTypes = {}; // empty = inherit policy default (accept all)
   bool _saving = false;
+
+  static const _contentTypeOptions = ['photos', 'files']; // matches types.PhotosFolder / types.FilesFolder
 
   @override
   void initState() {
@@ -1257,6 +1287,10 @@ class _EditAccountDialogState extends State<_EditAccountDialog> {
     _pinned = widget.admin['pinned'] == true;
     _softCapText = widget.admin['soft_cap_pct']?.toString();
     _hardCapText = widget.admin['hard_cap_pct']?.toString();
+    _regionText = widget.admin['region'] as String?;
+    _compressionLevel = widget.admin['compression_level'] as int?;
+    final accepted = widget.admin['accepts_content_types'] as List<dynamic>?;
+    if (accepted != null) _acceptsContentTypes = accepted.map((e) => e.toString()).toSet();
   }
 
   @override
@@ -1304,6 +1338,41 @@ class _EditAccountDialogState extends State<_EditAccountDialog> {
             keyboardType: TextInputType.number,
             onChanged: (v) => _hardCapText = v,
           ),
+          const Divider(height: 24),
+          const Text('Advanced (forward-compat)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 4),
+          // F4 multi-region diversity hint (used by SelectReplicas when DiversityRegionRequired=true)
+          TextFormField(
+            initialValue: _regionText,
+            decoration: const InputDecoration(labelText: 'Region (e.g. eu-west, us-east) — F4'),
+            onChanged: (v) => _regionText = v.isEmpty ? null : v,
+          ),
+          // F3 deep archive — zstd compression level on Role=ColdArchive uploads
+          DropdownButtonFormField<int?>(
+            value: _compressionLevel,
+            decoration: const InputDecoration(labelText: 'Compression level (0=off, 1-22=zstd) — F3'),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Inherit policy')),
+              for (final lvl in [0, 1, 3, 6, 9, 12, 15, 19, 22])
+                DropdownMenuItem(value: lvl, child: Text(lvl == 0 ? '0 (no compression)' : 'Level $lvl')),
+            ],
+            onChanged: (v) => setState(() => _compressionLevel = v),
+          ),
+          const SizedBox(height: 8),
+          // Content-type routing (already supported by SelectReplicas; previously only PATCH-able via raw API)
+          Text('Accepts content types', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+          Text('Empty = inherit policy (accept all)', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+          const SizedBox(height: 4),
+          Wrap(spacing: 6, children: [
+            for (final type in _contentTypeOptions)
+              FilterChip(
+                label: Text(type),
+                selected: _acceptsContentTypes.contains(type),
+                onSelected: (sel) => setState(() {
+                  if (sel) { _acceptsContentTypes.add(type); } else { _acceptsContentTypes.remove(type); }
+                }),
+              ),
+          ]),
         ]),
       ),
       actions: [
@@ -1324,6 +1393,10 @@ class _EditAccountDialogState extends State<_EditAccountDialog> {
     final hc = int.tryParse(_hardCapText ?? '');
     if (sc != null) patch['soft_cap_pct'] = sc;
     if (hc != null) patch['hard_cap_pct'] = hc;
+    // s319 #7 forward-compat — backend already accepts these via handlePatch in admin_accounts.go
+    if (_regionText != null && _regionText!.isNotEmpty) patch['region'] = _regionText;
+    if (_compressionLevel != null) patch['compression_level'] = _compressionLevel;
+    if (_acceptsContentTypes.isNotEmpty) patch['accepts_content_types'] = _acceptsContentTypes.toList();
     try {
       await widget.relay.patchAdminAccount(widget.admin['id'] as int, patch);
       if (mounted) Navigator.pop(context, true);
