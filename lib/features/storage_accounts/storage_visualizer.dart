@@ -40,11 +40,9 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
         _log.d('Visualizer: Fetching map for ${f['file_id']}...');
         try {
           final map = await widget.relay.getFileMap(f['file_id']);
-          for (var chunk in map['chunks'] ?? []) {
-            for (var shard in chunk['shards'] ?? []) {
-              final location = shard['location'] as String;  // full: "gdrive:email@gmail.com"
-              data.add({'file': f['name'], 'location': location, 'size': (shard['size'] as num).toDouble()});
-            }
+          for (var r in (map['replicas'] ?? []) as List) {
+            final location = r['location'] as String;  // full: "gdrive:email@gmail.com:<path>"
+            data.add({'file': f['name'], 'location': location, 'size': (r['size'] as num).toDouble()});
           }
         } catch (mapErr) {
           _log.w('Visualizer: skip map for ${f['file_id']}: $mapErr'); // non-fatal
@@ -145,7 +143,7 @@ class _StorageVisualizerState extends State<StorageVisualizer> {
     );
   }
 
-  // Maps account email → total shard bytes; used by bar chart and labels
+  // Maps account email → total replica bytes; used by bar chart and labels
   // location format from Relay: "gdrive:email@gmail.com" → split on ':' to get email
   Map<String, double> get _providerLabels {
     final map = <String, double>{};
