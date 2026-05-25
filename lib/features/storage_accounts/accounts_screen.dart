@@ -59,8 +59,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
         for (final a in accountsList) (a as Map<String, dynamic>)['id'] as int: Map<String, dynamic>.from(a),
       };
       // scanData shape: {providerID: {state, started_at, last_finished_at, files_discovered, ...}}
+      // Defensive: skip entries whose value isn't a Map (e.g. MockClient in widget tests returning unrelated JSON).
       final scanByID = <String, Map<String, dynamic>>{
-        for (final e in scanData.entries) e.key: Map<String, dynamic>.from(e.value as Map),
+        for (final e in scanData.entries)
+          if (e.value is Map) e.key: Map<String, dynamic>.from(e.value as Map),
       };
       setState(() {
         _providers = providers;
