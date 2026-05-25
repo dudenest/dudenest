@@ -159,6 +159,14 @@ class RelayClient {
       headers: _headers);
     return _processResponse(resp, 'POST /admin/scan/pause') as Map<String, dynamic>;
   }
+  // POST /admin/scan/bootstrap?provider=<id>[&reset=1] — s321: one-shot Drive-wide retro-index.
+  // Catches files that existed BEFORE Phase 2 pageToken seed (e.g. uploaded directly to Drive before
+  // dudenest connection). Idempotent — re-run safe; pass reset=true to force re-index even if already done.
+  Future<Map<String, dynamic>> bootstrapWholeDrive(String providerID, {bool reset = false}) async {
+    final qs = 'provider=${Uri.encodeQueryComponent(providerID)}${reset ? "&reset=1" : ""}';
+    final resp = await _http.post(Uri.parse('$baseUrl/admin/scan/bootstrap?$qs'), headers: _headers);
+    return _processResponse(resp, 'POST /admin/scan/bootstrap') as Map<String, dynamic>;
+  }
 
   // PATCH /admin/policy — overlay merge of any subset of AccountPolicyConfig fields
   // (replication_factor, diversity_required, soft_cap_default_pct, etc.). Returns

@@ -1031,11 +1031,12 @@ class _AccountListTile extends StatelessWidget {
               icon: const Icon(Icons.more_vert, size: 20),
               onSelected: (v) => _handleAction(context, v),
               itemBuilder: (_) => const [
-                PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('Refresh quota'))),
-                PopupMenuItem(value: 'scan',    child: ListTile(leading: Icon(Icons.cloud_sync), title: Text('Scan cloud now'))), // s320 Phase 1
-                PopupMenuItem(value: 'edit',    child: ListTile(leading: Icon(Icons.edit), title: Text('Edit'))),
+                PopupMenuItem(value: 'refresh',   child: ListTile(leading: Icon(Icons.refresh), title: Text('Refresh quota'))),
+                PopupMenuItem(value: 'scan',      child: ListTile(leading: Icon(Icons.cloud_sync), title: Text('Scan cloud now'))), // s320 Phase 1
+                PopupMenuItem(value: 'bootstrap', child: ListTile(leading: Icon(Icons.travel_explore), title: Text('Index ALL Drive files'))), // s321 Drive-wide bootstrap
+                PopupMenuItem(value: 'edit',      child: ListTile(leading: Icon(Icons.edit), title: Text('Edit'))),
                 PopupMenuDivider(),
-                PopupMenuItem(value: 'drain',   child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Remove (drain)', style: TextStyle(color: Colors.red)))),
+                PopupMenuItem(value: 'drain',     child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Remove (drain)', style: TextStyle(color: Colors.red)))),
               ],
             ),
           ]),
@@ -1117,6 +1118,32 @@ class _AccountListTile extends StatelessWidget {
         } catch (e) {
           if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Scan failed: $e'), backgroundColor: Colors.red));
+        }
+        break;
+      case 'bootstrap': // s321: Drive-wide retro-index (catches files outside dudenest folder uploaded before)
+        final providerID = '${provider['type'] ?? 'gdrive'}:${provider['email'] ?? provider['id']}';
+        final alreadyDone = scan?['whole_drive_bootstrapped'] == true;
+        final confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+          title: Text(alreadyDone ? 'Re-index ALL Drive files?' : 'Index ALL Drive files?'),
+          content: Text(alreadyDone
+            ? 'Drive-wide bootstrap was already run for this account (${scan?['whole_drive_bootstrap_indexed'] ?? 0} files indexed). Re-run to catch any new files that may have been added outside Phase 2 polling window.\n\nIdempotent — already-indexed files are skipped (dedup by Drive file ID).'
+            : 'One-shot scan of EVERY file in this Drive account (not just the dudenest folder). Catches files you uploaded directly to Drive before connecting dudenest.\n\nMay take 1-10 min for large accounts. Idempotent.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(alreadyDone ? 'Re-index' : 'Index now')),
+          ],
+        ));
+        if (confirmed != true) return;
+        try {
+          await relay.bootstrapWholeDrive(providerID, reset: alreadyDone);
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Drive-wide bootstrap started — runs in background, progress in scan status'),
+              duration: Duration(seconds: 4)));
+          await Future.delayed(const Duration(seconds: 3));
+          onChanged();
+        } catch (e) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Bootstrap failed: $e'), backgroundColor: Colors.red));
         }
         break;
       case 'edit':
@@ -1641,8 +1668,11 @@ class _ScanStatusLine extends StatelessWidget {
       text = 'Scan error${lastErr != null ? ": $lastErr" : ""} · tap menu → Scan cloud now';
     } else if (lastFinished != null && lastFinished.isNotEmpty && !lastFinished.startsWith('0001-')) {
       final ago = _formatAgo(DateTime.tryParse(lastFinished));
+      final bootstrapped = scan['whole_drive_bootstrapped'] == true;
+      final wholeIndexed = (scan['whole_drive_bootstrap_indexed'] as num?)?.toInt() ?? 0;
       text = 'Cloud scan: $discovered indexed${indexed > 0 ? " (+$indexed new)" : ""}'
-        '${errors > 0 ? " · $errors errors" : ""} · last scan $ago';
+        '${errors > 0 ? " · $errors errors" : ""} · last scan $ago'
+        '${bootstrapped ? " · whole-Drive: $wholeIndexed files" : ""}';
     } else {
       icon = Icons.cloud_queue;
       text = 'Cloud not yet scanned — tap menu → Scan cloud now';
