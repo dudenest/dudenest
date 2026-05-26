@@ -64,6 +64,7 @@ class _RelayScreenState extends State<RelayScreen> {
   ///      (those were routed to /files/ before content-type detection landed).
   bool _matchesFolder(Map<String, dynamic> f) {
     if (widget.folder == null) return true;
+    if (widget.folder == 'files') return true;
     final backendFolder = f['folder'] as String?;
     final ext = ((f['name'] as String? ?? '').split('.').lastOrNull ?? '')
         .toLowerCase();
@@ -329,6 +330,10 @@ class _RelayScreenState extends State<RelayScreen> {
   // Small leading thumbnail for list views (images: thumbnail; others: icon)
   Widget _buildLeading(String name, String id) {
     const sz = 44.0;
+    if (widget.folder == 'files') {
+      return SizedBox(
+          width: sz, height: sz, child: Center(child: Icon(_fileIcon(name))));
+    }
     if (_isImage(name)) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(4),
@@ -358,6 +363,10 @@ class _RelayScreenState extends State<RelayScreen> {
 
   // Opens file in MediaViewer (images + videos inline) or downloads others.
   void _openFile(BuildContext ctx, String id, String name) {
+    if (widget.folder == 'files' && !(_isImage(name) || _isVideo(name))) {
+      _download(id, name);
+      return;
+    }
     if (_isImage(name) || _isVideo(name)) {
       // Sort files by taken_at/created (newest first) — matches gallery display order for consistent swipe navigation.
       // Use _visibleFiles so the swipe set respects the active Photos/Files filter.
@@ -411,13 +420,14 @@ class _RelayScreenState extends State<RelayScreen> {
         final f = files[i];
         final id = f['file_id'] as String? ?? '';
         final name = f['name'] as String? ?? id;
+        final ext = _extensionLabel(name);
         final isSelected = _selected.contains(id);
         return ListTile(
           selected: isSelected,
           leading: _buildLeading(name, id),
           title: Text(name, overflow: TextOverflow.ellipsis),
           subtitle: Text(
-              '${_formatSize(f['size'])} · ${id.length >= 8 ? '${id.substring(0, 8)}...' : id}'),
+              '${ext.isEmpty ? 'file' : ext} · ${_formatSize(f['size'])} · ${id.length >= 8 ? '${id.substring(0, 8)}...' : id}'),
           trailing: _selectionMode
               ? Icon(
                   isSelected
@@ -433,6 +443,12 @@ class _RelayScreenState extends State<RelayScreen> {
         );
       },
     );
+  }
+
+  String _extensionLabel(String name) {
+    final parts = name.split('.');
+    if (parts.length < 2 || parts.last.isEmpty) return 'file';
+    return parts.last.toUpperCase();
   }
 
   // ─── Long names view ────────────────────────────────────────────────────────
@@ -509,10 +525,14 @@ class _RelayScreenState extends State<RelayScreen> {
           (_error as RelayException).statusCode == 503) {
         return _WelcomeScreen(relay: widget.relay);
       }
-      return _ErrorDisplay(error: _error!, onRetry: _load);
+      return _ErrorDisplay(
+          error: _error!,
+          onRetry: _load,
+          onBack: () => setState(() => _error = null));
     }
     if (_visibleFiles.isEmpty)
       return _NoFilesEmptyState(relay: widget.relay, onUploaded: _load);
+    if (widget.folder == 'files') return _buildList();
     return switch (_viewMode) {
       _ViewMode.gallery => _buildGallery(),
       _ViewMode.list => _buildList(),
@@ -585,7 +605,7 @@ class _RelayScreenState extends State<RelayScreen> {
               ),
             ),
           ),
-          if (!_selectionMode) ...[
+          if (!_selectionMode && widget.folder != 'files') ...[
             for (final mode in _ViewMode.values)
               IconButton(
                 icon: Icon(_modeIcon(mode),
@@ -623,7 +643,9 @@ class _RelayScreenState extends State<RelayScreen> {
 class _ErrorDisplay extends StatelessWidget {
   final Object error;
   final VoidCallback onRetry;
-  const _ErrorDisplay({required this.error, required this.onRetry});
+  final VoidCallback? onBack;
+  const _ErrorDisplay(
+      {required this.error, required this.onRetry, this.onBack});
 
   @override
   Widget build(BuildContext context) {
@@ -665,7 +687,21 @@ class _ErrorDisplay extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 24),
-          ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+          Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                OutlinedButton(
+                  onPressed: onBack ??
+                      () {
+                        if (Navigator.of(context).canPop())
+                          Navigator.of(context).pop();
+                      },
+                  child: const Text('Back'),
+                ),
+                ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+              ]),
         ]),
       ),
     );

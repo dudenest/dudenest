@@ -133,4 +133,50 @@ void main() {
       expect(find.text('photo.jpg'), findsOneWidget);
     });
   });
+
+  testWidgets('Files tab shows all cloud files as a list without thumbnails',
+      (tester) async {
+    final seen = <String>[];
+    final relay = _relay((req) async {
+      seen.add(req.url.path);
+      if (req.url.path == '/files/manifest') {
+        return http.Response(
+            jsonEncode({
+              'revision': 'r2',
+              'unchanged': false,
+              'files': [
+                {
+                  'file_id': 'p1',
+                  'name': 'photo.jpg',
+                  'size': 1024,
+                  'folder': 'photos',
+                  'created': '2026-04-06T12:00:00Z'
+                },
+                {
+                  'file_id': 'd1',
+                  'name': 'report.pdf',
+                  'size': 2048,
+                  'folder': 'files',
+                  'created': '2026-04-06T12:00:00Z'
+                }
+              ]
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/providers') {
+        return http.Response('{"providers":[]}', 200,
+            headers: {'content-type': 'application/json'});
+      }
+      return http.Response('error', 404);
+    });
+    await tester.pumpWidget(_wrap(RelayScreen(relay: relay, folder: 'files')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('photo.jpg'), findsOneWidget);
+    expect(find.text('report.pdf'), findsOneWidget);
+    expect(find.textContaining('JPG'), findsOneWidget);
+    expect(find.textContaining('PDF'), findsOneWidget);
+    expect(seen.where((p) => p.endsWith('/thumbnail')), isEmpty);
+  });
 }

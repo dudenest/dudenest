@@ -13,10 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Flutter now loads a local tile manifest snapshot before syncing with relay, so Photos/Files can render immediately after the first successful sync.
 - Relay client supports `GET /files/manifest?since=<revision>` with fallback to legacy `GET /files`.
 - Gallery settings expose configurable local tile cache limits and Flutter thumbnail memory LRU limits.
+- Settings duplicates the gallery cache/LRU controls so limits can be changed outside `/Photos`.
 
 ### Changed
 - Photos and Files share the same cached manifest; tab filtering remains local via the existing `folder` field.
 - Manifest fallback also handles old relays that return HTTP 500 by treating `manifest` as a file ID.
+- `/Files` now shows all cloud-indexed files as a plain list with icon, name, extension, size, and file ID instead of the Photos gallery layout.
+- File-screen errors include a Back action so a failed preview/download no longer traps the user on Retry only.
 
 ---
 

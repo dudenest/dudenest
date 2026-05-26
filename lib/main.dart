@@ -19,7 +19,8 @@ import 'features/files/gallery_settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AuthService().init(); // loads token from localStorage + handles OAuth callback
+  await AuthService()
+      .init(); // loads token from localStorage + handles OAuth callback
   runApp(const DudenestApp());
 }
 
@@ -33,7 +34,8 @@ class DudenestApp extends StatefulWidget {
 
 class DudenestAppState extends State<DudenestApp> {
   ThemeMode _themeMode = ThemeMode.system;
-  String _storageStrategy = 'Replica'; // historical setting — only "Replica" (1 file + N copies) is supported since relay v0.21.0
+  String _storageStrategy =
+      'Replica'; // historical setting — only "Replica" (1 file + N copies) is supported since relay v0.21.0
 
   @override
   void initState() {
@@ -71,8 +73,14 @@ class DudenestAppState extends State<DudenestApp> {
     return MaterialApp(
       title: 'Dudenest',
       themeMode: _themeMode,
-      theme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.light, useMaterial3: true),
-      darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark, useMaterial3: true),
+      theme: ThemeData(
+          colorSchemeSeed: seed,
+          brightness: Brightness.light,
+          useMaterial3: true),
+      darkTheme: ThemeData(
+          colorSchemeSeed: seed,
+          brightness: Brightness.dark,
+          useMaterial3: true),
       home: AuthService().isLoggedIn ? const HomeScreen() : const LoginScreen(),
     );
   }
@@ -89,9 +97,12 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _defaultRelayUrl = 'https://relay.dudenest.com';
   late RelayClient _relay;
   late String _relayUrl;
-  String? _relayToken; // Layer 3: short-lived HMAC from API, kept in memory only (not persisted)
-  Timer? _tokenRefreshTimer; // periodic relay_token refresh (token TTL=1h, refresh every 50min)
-  bool _relayReady = false; // true after first _loadRelayUrl() completes — prevents cold-start 403
+  String?
+      _relayToken; // Layer 3: short-lived HMAC from API, kept in memory only (not persisted)
+  Timer?
+      _tokenRefreshTimer; // periodic relay_token refresh (token TTL=1h, refresh every 50min)
+  bool _relayReady =
+      false; // true after first _loadRelayUrl() completes — prevents cold-start 403
 
   @override
   void initState() {
@@ -99,9 +110,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _relayUrl = _defaultRelayUrl;
     _relay = RelayClient(_relayUrl);
     // Await initial token fetch before rendering RelayScreen to prevent cold-start 403
-    _loadRelayUrl().then((_) { if (mounted) setState(() => _relayReady = true); });
+    _loadRelayUrl().then((_) {
+      if (mounted) setState(() => _relayReady = true);
+    });
     // Relay token expires after 1 hour — refresh every 50 minutes to prevent 403
-    _tokenRefreshTimer = Timer.periodic(const Duration(minutes: 50), (_) => _loadRelayUrl());
+    _tokenRefreshTimer =
+        Timer.periodic(const Duration(minutes: 50), (_) => _loadRelayUrl());
   }
 
   @override
@@ -119,14 +133,24 @@ class _HomeScreenState extends State<HomeScreen> {
     final info = await _fetchRelayInfoFromApi();
     if (info != null) {
       final url = info['relay_url']!;
-      final token = info['relay_token']; // may be null if relay not yet registered
-      if (mounted) setState(() { _relayUrl = url; _relayToken = token; _relay = RelayClient(url, relayToken: token); });
+      final token =
+          info['relay_token']; // may be null if relay not yet registered
+      if (mounted)
+        setState(() {
+          _relayUrl = url;
+          _relayToken = token;
+          _relay = RelayClient(url, relayToken: token);
+        });
       return;
     }
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('relay_url') ?? _defaultRelayUrl;
     if (saved != _relayUrl && mounted) {
-      setState(() { _relayUrl = saved; _relayToken = null; _relay = RelayClient(saved); });
+      setState(() {
+        _relayUrl = saved;
+        _relayToken = null;
+        _relay = RelayClient(saved);
+      });
     }
   }
 
@@ -148,26 +172,38 @@ class _HomeScreenState extends State<HomeScreen> {
       final first = relays.first as Map<String, dynamic>;
       final relayUrl = first['relay_url'] as String?;
       if (relayUrl == null || relayUrl.isEmpty) return null;
-      return {'relay_url': relayUrl, 'relay_token': first['relay_token'] as String?};
-    } catch (_) { return null; }
+      return {
+        'relay_url': relayUrl,
+        'relay_token': first['relay_token'] as String?
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   void setRelayUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('relay_url', url);
     // Manual relay URL override clears relay_token — user manages this relay directly
-    if (mounted) setState(() { _relayUrl = url; _relayToken = null; _relay = RelayClient(url); });
+    if (mounted)
+      setState(() {
+        _relayUrl = url;
+        _relayToken = null;
+        _relay = RelayClient(url);
+      });
   }
 
   @override
   Widget build(BuildContext context) {
     // Show loading spinner until relay token is ready — prevents cold-start 403 on Files tab
-    if (!_relayReady) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!_relayReady)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final screens = [
-      RelayScreen(relay: _relay, folder: 'photos'),       // P3: media-only tab
-      RelayScreen(relay: _relay, folder: 'files'),        // P3: non-media tab
+      RelayScreen(relay: _relay, folder: 'photos'), // P3: media-only tab
+      RelayScreen(relay: _relay, folder: 'files'), // P3: non-media tab
       UploadScreen(relay: _relay),
-      SettingsScreen(relay: _relay, relayUrl: _relayUrl, onRelayUrlChanged: setRelayUrl),
+      SettingsScreen(
+          relay: _relay, relayUrl: _relayUrl, onRelayUrlChanged: setRelayUrl),
     ];
     return Scaffold(
       body: screens[_tab],
@@ -194,7 +230,11 @@ class SettingsScreen extends StatelessWidget {
   final RelayClient relay;
   final String relayUrl;
   final void Function(String) onRelayUrlChanged;
-  const SettingsScreen({super.key, required this.relay, required this.relayUrl, required this.onRelayUrlChanged});
+  const SettingsScreen(
+      {super.key,
+      required this.relay,
+      required this.relayUrl,
+      required this.onRelayUrlChanged});
   @override
   Widget build(BuildContext context) {
     final app = DudenestApp.of(context);
@@ -206,8 +246,11 @@ class SettingsScreen extends StatelessWidget {
         if (user != null) ...[
           ListTile(
             leading: CircleAvatar(
-              backgroundImage: user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
-              child: user.avatarUrl == null ? Text(user.email[0].toUpperCase()) : null,
+              backgroundImage:
+                  user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
+              child: user.avatarUrl == null
+                  ? Text(user.email[0].toUpperCase())
+                  : null,
             ),
             title: Text(user.name ?? user.email),
             subtitle: Text('${user.provider} · ${user.email}'),
@@ -226,17 +269,25 @@ class SettingsScreen extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.tag),
           title: const Text('Version & Updates'),
-          subtitle: const Text('App + Relay versions, changelog, one-click relay update', style: TextStyle(fontSize: 12)),
+          subtitle: const Text(
+              'App + Relay versions, changelog, one-click relay update',
+              style: TextStyle(fontSize: 12)),
           trailing: const Row(mainAxisSize: MainAxisSize.min, children: [
             Text(String.fromEnvironment('APP_VERSION', defaultValue: 'dev'),
-                style: TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600)),
+                style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
             SizedBox(width: 4),
             Icon(Icons.chevron_right, size: 18, color: Colors.grey),
           ]),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UpdateScreen(relay: relay))),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => UpdateScreen(relay: relay))),
         ),
         const Divider(),
-        const ListTile(title: Text('Theme', style: TextStyle(fontWeight: FontWeight.bold))),
+        const ListTile(
+            title:
+                Text('Theme', style: TextStyle(fontWeight: FontWeight.bold))),
         ListTile(
           leading: const Icon(Icons.brightness_auto),
           title: const Text('System default'),
@@ -253,11 +304,14 @@ class SettingsScreen extends StatelessWidget {
           onTap: () => app.setThemeMode(ThemeMode.dark),
         ),
         const Divider(),
-        const ListTile(title: Text('Relay', style: TextStyle(fontWeight: FontWeight.bold))),
+        const ListTile(
+            title:
+                Text('Relay', style: TextStyle(fontWeight: FontWeight.bold))),
         ListTile(
           leading: const Icon(Icons.router),
           title: const Text('Relay URL'),
-          subtitle: Text(relayUrl, style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+          subtitle: Text(relayUrl,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
           trailing: const Icon(Icons.edit),
           onTap: () async {
             final ctrl = TextEditingController(text: relayUrl);
@@ -265,10 +319,17 @@ class SettingsScreen extends StatelessWidget {
               context: context,
               builder: (ctx) => AlertDialog(
                 title: const Text('Set Relay URL'),
-                content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'https://relay.dudenest.com')),
+                content: TextField(
+                    controller: ctrl,
+                    decoration: const InputDecoration(
+                        hintText: 'https://relay.dudenest.com')),
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                  TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                      child: const Text('Save')),
                 ],
               ),
             );
@@ -276,11 +337,14 @@ class SettingsScreen extends StatelessWidget {
           },
         ),
         const Divider(),
-        const ListTile(title: Text('Storage', style: TextStyle(fontWeight: FontWeight.bold))),
+        const ListTile(
+            title:
+                Text('Storage', style: TextStyle(fontWeight: FontWeight.bold))),
         ListTile(
           leading: const Icon(Icons.sd_storage),
           title: const Text('Storage Strategy'),
-          subtitle: const Text('1 file + N replicas (per SelectReplicas policy)'),
+          subtitle:
+              const Text('1 file + N replicas (per SelectReplicas policy)'),
           trailing: const Icon(Icons.copy_all),
         ),
         ListTile(
@@ -304,20 +368,41 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
         const Divider(),
-        const ListTile(title: Text('Files View', style: TextStyle(fontWeight: FontWeight.bold))),
+        const ListTile(
+            title: Text('Files View',
+                style: TextStyle(fontWeight: FontWeight.bold))),
         _GallerySettingsTile(),
         const Divider(),
-        const ListTile(title: Text('Community', style: TextStyle(fontWeight: FontWeight.bold))),
-        _SocialLinkTile(icon: Icons.code, color: const Color(0xFF24292e),
-            label: 'GitHub', subtitle: 'Source code', url: 'https://github.com/dudenest/dudenest'),
-        _SocialLinkTile(icon: Icons.forum, color: const Color(0xFF5865F2),
-            label: 'Discord', subtitle: 'Community chat', url: 'https://discord.gg/pYjR9jS4'),
-        _SocialLinkTile(icon: Icons.play_arrow_rounded, color: const Color(0xFFFF0000),
-            label: 'YouTube', subtitle: 'Videos — coming soon'),
-        _SocialLinkTile(icon: Icons.facebook, color: const Color(0xFF1877F2),
-            label: 'Facebook', subtitle: 'Page — coming soon'),
-        _SocialLinkTile(icon: Icons.close, color: Colors.black87,
-            label: 'X / Twitter', subtitle: 'Updates — coming soon'),
+        const ListTile(
+            title: Text('Community',
+                style: TextStyle(fontWeight: FontWeight.bold))),
+        _SocialLinkTile(
+            icon: Icons.code,
+            color: const Color(0xFF24292e),
+            label: 'GitHub',
+            subtitle: 'Source code',
+            url: 'https://github.com/dudenest/dudenest'),
+        _SocialLinkTile(
+            icon: Icons.forum,
+            color: const Color(0xFF5865F2),
+            label: 'Discord',
+            subtitle: 'Community chat',
+            url: 'https://discord.gg/pYjR9jS4'),
+        _SocialLinkTile(
+            icon: Icons.play_arrow_rounded,
+            color: const Color(0xFFFF0000),
+            label: 'YouTube',
+            subtitle: 'Videos — coming soon'),
+        _SocialLinkTile(
+            icon: Icons.facebook,
+            color: const Color(0xFF1877F2),
+            label: 'Facebook',
+            subtitle: 'Page — coming soon'),
+        _SocialLinkTile(
+            icon: Icons.close,
+            color: Colors.black87,
+            label: 'X / Twitter',
+            subtitle: 'Updates — coming soon'),
       ]),
     );
   }
@@ -336,7 +421,9 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
   @override
   void initState() {
     super.initState();
-    GallerySettings.load().then((s) { if (mounted) setState(() => _s = s); });
+    GallerySettings.load().then((s) {
+      if (mounted) setState(() => _s = s);
+    });
   }
 
   Future<void> _save() async {
@@ -358,13 +445,28 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: SegmentedButton<GalleryViewMode>(
           segments: const [
-            ButtonSegment(value: GalleryViewMode.justified, label: Text('Justified'), icon: Icon(Icons.view_stream)),
-            ButtonSegment(value: GalleryViewMode.masonry, label: Text('Masonry'), icon: Icon(Icons.dashboard)),
-            ButtonSegment(value: GalleryViewMode.square, label: Text('Square'), icon: Icon(Icons.grid_view)),
-            ButtonSegment(value: GalleryViewMode.list, label: Text('List'), icon: Icon(Icons.list)),
+            ButtonSegment(
+                value: GalleryViewMode.justified,
+                label: Text('Justified'),
+                icon: Icon(Icons.view_stream)),
+            ButtonSegment(
+                value: GalleryViewMode.masonry,
+                label: Text('Masonry'),
+                icon: Icon(Icons.dashboard)),
+            ButtonSegment(
+                value: GalleryViewMode.square,
+                label: Text('Square'),
+                icon: Icon(Icons.grid_view)),
+            ButtonSegment(
+                value: GalleryViewMode.list,
+                label: Text('List'),
+                icon: Icon(Icons.list)),
           ],
           selected: {s.viewMode},
-          onSelectionChanged: (v) { s.viewMode = v.first; _save(); },
+          onSelectionChanged: (v) {
+            s.viewMode = v.first;
+            _save();
+          },
         ),
       ),
       // Row height (justified only)
@@ -378,9 +480,14 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
         ),
         Slider(
           value: s.justifiedRowHeight,
-          min: 100, max: 320, divisions: 11,
+          min: 100,
+          max: 320,
+          divisions: 11,
           label: '${s.justifiedRowHeight.round()}px',
-          onChanged: (v) { s.justifiedRowHeight = v; _save(); },
+          onChanged: (v) {
+            s.justifiedRowHeight = v;
+            _save();
+          },
         ),
       ],
       // Masonry columns
@@ -394,7 +501,10 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
               ButtonSegment(value: 3, label: Text('3')),
             ],
             selected: {s.masonryColumns},
-            onSelectionChanged: (v) { s.masonryColumns = v.first; _save(); },
+            onSelectionChanged: (v) {
+              s.masonryColumns = v.first;
+              _save();
+            },
           ),
         ),
       // Toggles
@@ -402,19 +512,107 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
         dense: true,
         title: const Text('Group by date'),
         value: s.groupByDate,
-        onChanged: (v) { s.groupByDate = v; _save(); },
+        onChanged: (v) {
+          s.groupByDate = v;
+          _save();
+        },
       ),
       SwitchListTile(
         dense: true,
         title: const Text('Show date headers'),
         value: s.showDateHeaders,
-        onChanged: s.groupByDate ? (v) { s.showDateHeaders = v; _save(); } : null,
+        onChanged: s.groupByDate
+            ? (v) {
+                s.showDateHeaders = v;
+                _save();
+              }
+            : null,
       ),
       SwitchListTile(
         dense: true,
         title: const Text('Date scrubbar (right side)'),
         value: s.showDateScrubbar,
-        onChanged: s.groupByDate ? (v) { s.showDateScrubbar = v; _save(); } : null,
+        onChanged: s.groupByDate
+            ? (v) {
+                s.showDateScrubbar = v;
+                _save();
+              }
+            : null,
+      ),
+      const Divider(),
+      SwitchListTile(
+        dense: true,
+        title: const Text('Local tile cache'),
+        value: s.localTileCacheEnabled,
+        onChanged: (v) {
+          s.localTileCacheEnabled = v;
+          _save();
+        },
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+        child: Text('Tile cache: ${s.localTileCacheMaxItems} items',
+            style: Theme.of(context).textTheme.bodySmall),
+      ),
+      Slider(
+        value: s.localTileCacheMaxItems.toDouble(),
+        min: 500,
+        max: 20000,
+        divisions: 39,
+        label: '${s.localTileCacheMaxItems}',
+        onChanged: (v) {
+          s.localTileCacheMaxItems = v.round();
+          _save();
+        },
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+        child: Text(
+            'Tile cache size: ${(s.localTileCacheMaxBytes / 1024 / 1024).round()} MB',
+            style: Theme.of(context).textTheme.bodySmall),
+      ),
+      Slider(
+        value: (s.localTileCacheMaxBytes / 1024 / 1024).toDouble(),
+        min: 2,
+        max: 64,
+        divisions: 31,
+        label: '${(s.localTileCacheMaxBytes / 1024 / 1024).round()} MB',
+        onChanged: (v) {
+          s.localTileCacheMaxBytes = v.round() * 1024 * 1024;
+          _save();
+        },
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+        child: Text('Thumbnail memory LRU: ${s.thumbnailMemoryCacheMb} MB',
+            style: Theme.of(context).textTheme.bodySmall),
+      ),
+      Slider(
+        value: s.thumbnailMemoryCacheMb.toDouble(),
+        min: 32,
+        max: 512,
+        divisions: 15,
+        label: '${s.thumbnailMemoryCacheMb} MB',
+        onChanged: (v) {
+          s.thumbnailMemoryCacheMb = v.round();
+          _save();
+        },
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+        child: Text('Thumbnail LRU items: ${s.thumbnailMemoryCacheItems}',
+            style: Theme.of(context).textTheme.bodySmall),
+      ),
+      Slider(
+        value: s.thumbnailMemoryCacheItems.toDouble(),
+        min: 200,
+        max: 5000,
+        divisions: 24,
+        label: '${s.thumbnailMemoryCacheItems}',
+        onChanged: (v) {
+          s.thumbnailMemoryCacheItems = v.round();
+          _save();
+        },
       ),
     ]);
   }
@@ -426,8 +624,12 @@ class _SocialLinkTile extends StatelessWidget {
   final String label;
   final String subtitle;
   final String? url;
-  const _SocialLinkTile({required this.icon, required this.color, required this.label,
-      required this.subtitle, this.url});
+  const _SocialLinkTile(
+      {required this.icon,
+      required this.color,
+      required this.label,
+      required this.subtitle,
+      this.url});
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -437,8 +639,13 @@ class _SocialLinkTile extends StatelessWidget {
       ),
       title: Text(label),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-      trailing: url != null ? const Icon(Icons.open_in_new, size: 16, color: Colors.grey) : null,
-      onTap: url != null ? () => launchUrl(Uri.parse(url!), mode: LaunchMode.externalApplication) : null,
+      trailing: url != null
+          ? const Icon(Icons.open_in_new, size: 16, color: Colors.grey)
+          : null,
+      onTap: url != null
+          ? () =>
+              launchUrl(Uri.parse(url!), mode: LaunchMode.externalApplication)
+          : null,
     );
   }
 }
