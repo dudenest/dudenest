@@ -115,7 +115,11 @@ class _RelayScreenState extends State<RelayScreen> {
           files = List<Map<String, dynamic>>.from(manifest['files'] ?? []);
         }
       } on RelayException catch (e) {
-        if (e.statusCode != 404) rethrow;
+        final legacyManifestMiss = e.statusCode == 404 ||
+            (e.statusCode == 500 &&
+                (e.body ?? '').contains('load filemap') &&
+                (e.body ?? '').contains('manifest'));
+        if (!legacyManifestMiss) rethrow;
         files = await widget.relay.listFiles(); // older relay compatibility
         revision = '';
       }

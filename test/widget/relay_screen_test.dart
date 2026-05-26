@@ -90,4 +90,47 @@ void main() {
       expect(find.text('photo.jpg'), findsOneWidget);
     });
   });
+
+  testWidgets('falls back to /files when old relay treats manifest as file ID',
+      (tester) async {
+    final relay = _relay((req) async {
+      if (req.url.path == '/files/manifest') {
+        return http.Response(
+            '{"error":"download: load filemap: open /var/lib/dudenest/maps/manifest.json: no such file or directory"}',
+            500,
+            headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/files') {
+        return http.Response(
+            jsonEncode({
+              'files': [
+                {
+                  'file_id': 'f1',
+                  'name': 'photo.jpg',
+                  'size': 1024,
+                  'hash': 'h1',
+                  'created': '2026-04-06T12:00:00Z'
+                }
+              ]
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/providers') {
+        return http.Response('{"providers":[]}', 200,
+            headers: {'content-type': 'application/json'});
+      }
+      return http.Response('error', 404);
+    });
+
+    await mockNetworkImagesFor(() async {
+      await tester.pumpWidget(_wrap(RelayScreen(relay: relay)));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byIcon(Icons.list));
+      await tester.pump();
+      expect(find.text('photo.jpg'), findsOneWidget);
+    });
+  });
 }

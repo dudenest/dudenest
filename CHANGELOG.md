@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Photos and Files share the same cached manifest; tab filtering remains local via the existing `folder` field.
+- Manifest fallback also handles old relays that return HTTP 500 by treating `manifest` as a file ID.
 
 ---
 
