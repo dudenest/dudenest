@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] — 2026-05-26 — Local tile manifest cache
+
+### Added
+- Flutter now loads a local tile manifest snapshot before syncing with relay, so Photos/Files can render immediately after the first successful sync.
+- Relay client supports `GET /files/manifest?since=<revision>` with fallback to legacy `GET /files`.
+- Gallery settings expose configurable local tile cache limits and Flutter thumbnail memory LRU limits.
+
+### Changed
+- Photos and Files share the same cached manifest; tab filtering remains local via the existing `folder` field.
+
+---
+
 ## [0.6.0] — 2026-05-18 — Gallery UI & Media Viewer Overhaul
 
 ### Added

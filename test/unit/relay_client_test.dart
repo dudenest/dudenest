@@ -12,8 +12,19 @@ void main() {
   group('RelayClient.getProviders', () {
     test('parses provider list', () async {
       final c = _client((req) async => http.Response(
-            jsonEncode({'providers': [{'id': 'gdrive_1', 'email': 'a@b.com', 'quota_total_gb': 15.0, 'quota_used_gb': 0.5, 'available': true}]}),
-            200, headers: {'content-type': 'application/json'}));
+          jsonEncode({
+            'providers': [
+              {
+                'id': 'gdrive_1',
+                'email': 'a@b.com',
+                'quota_total_gb': 15.0,
+                'quota_used_gb': 0.5,
+                'available': true
+              }
+            ]
+          }),
+          200,
+          headers: {'content-type': 'application/json'}));
       final providers = await c.getProviders();
       expect(providers.length, 1);
       expect(providers[0]['email'], 'a@b.com');
@@ -22,12 +33,20 @@ void main() {
 
     test('throws RelayException on 401', () async {
       final c = _client((req) async => http.Response('unauthorized', 401));
-      expect(() => c.getProviders(), throwsA(isA<RelayException>().having((e) => e.statusCode, 'statusCode', 401)));
+      expect(
+          () => c.getProviders(),
+          throwsA(isA<RelayException>()
+              .having((e) => e.statusCode, 'statusCode', 401)));
     });
 
     test('throws RelayException on HTML response', () async {
-      final c = _client((req) async => http.Response('<!DOCTYPE html><html>...</html>', 200, headers: {'content-type': 'text/html'}));
-      expect(() => c.getProviders(), throwsA(isA<RelayException>().having((e) => e.message, 'message', contains('Expected JSON'))));
+      final c = _client((req) async => http.Response(
+          '<!DOCTYPE html><html>...</html>', 200,
+          headers: {'content-type': 'text/html'}));
+      expect(
+          () => c.getProviders(),
+          throwsA(isA<RelayException>()
+              .having((e) => e.message, 'message', contains('Expected JSON'))));
     });
 
     test('returns empty list when providers key absent', () async {
@@ -41,10 +60,19 @@ void main() {
   group('RelayClient.listFiles', () {
     test('parses file list', () async {
       final c = _client((req) async => http.Response(
-            jsonEncode({'files': [
-              {'file_id': 'abc123', 'name': 'photo.jpg', 'size': 2048, 'hash': 'deadbeef', 'created': '2026-04-06T12:00:00Z'}
-            ]}),
-            200, headers: {'content-type': 'application/json'}));
+          jsonEncode({
+            'files': [
+              {
+                'file_id': 'abc123',
+                'name': 'photo.jpg',
+                'size': 2048,
+                'hash': 'deadbeef',
+                'created': '2026-04-06T12:00:00Z'
+              }
+            ]
+          }),
+          200,
+          headers: {'content-type': 'application/json'}));
       final files = await c.listFiles();
       expect(files.length, 1);
       expect(files[0]['file_id'], 'abc123');
@@ -53,7 +81,25 @@ void main() {
 
     test('throws RelayException on 500', () async {
       final c = _client((req) async => http.Response('server error', 500));
-      expect(() => c.listFiles(), throwsA(isA<RelayException>().having((e) => e.statusCode, 'statusCode', 500)));
+      expect(
+          () => c.listFiles(),
+          throwsA(isA<RelayException>()
+              .having((e) => e.statusCode, 'statusCode', 500)));
+    });
+  });
+
+  group('RelayClient.fileManifest', () {
+    test('sends revision and parses unchanged manifest', () async {
+      final c = _client((req) async {
+        expect(req.url.path, '/files/manifest');
+        expect(req.url.queryParameters['since'], 'r1');
+        return http.Response(
+            jsonEncode({'revision': 'r1', 'unchanged': true, 'files': []}), 200,
+            headers: {'content-type': 'application/json'});
+      });
+      final manifest = await c.fileManifest(since: 'r1');
+      expect(manifest['unchanged'], true);
+      expect(manifest['revision'], 'r1');
     });
   });
 
@@ -67,7 +113,10 @@ void main() {
 
     test('throws RelayException on 404', () async {
       final c = _client((req) async => http.Response('not found', 404));
-      expect(() => c.downloadFile('missing'), throwsA(isA<RelayException>().having((e) => e.statusCode, 'statusCode', 404)));
+      expect(
+          () => c.downloadFile('missing'),
+          throwsA(isA<RelayException>()
+              .having((e) => e.statusCode, 'statusCode', 404)));
     });
   });
 
@@ -81,7 +130,10 @@ void main() {
 
     test('throws RelayException on non-200', () async {
       final c = _client((req) async => http.Response('error', 500));
-      expect(() => c.deleteFile('abc123'), throwsA(isA<RelayException>().having((e) => e.statusCode, 'statusCode', 500)));
+      expect(
+          () => c.deleteFile('abc123'),
+          throwsA(isA<RelayException>()
+              .having((e) => e.statusCode, 'statusCode', 500)));
     });
   });
 }
