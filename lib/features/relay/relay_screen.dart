@@ -532,7 +532,11 @@ class _RelayScreenState extends State<RelayScreen> {
     }
     if (_visibleFiles.isEmpty)
       return _NoFilesEmptyState(relay: widget.relay, onUploaded: _load);
-    if (widget.folder == 'files') return _buildList();
+    if (widget.folder == 'files') {
+      return _viewMode == _ViewMode.longNames
+          ? _buildLongNames()
+          : _buildList();
+    }
     return switch (_viewMode) {
       _ViewMode.gallery => _buildGallery(),
       _ViewMode.list => _buildList(),
@@ -605,15 +609,17 @@ class _RelayScreenState extends State<RelayScreen> {
               ),
             ),
           ),
-          if (!_selectionMode && widget.folder != 'files') ...[
-            for (final mode in _ViewMode.values)
+          if (!_selectionMode) ...[
+            for (final mode in widget.folder == 'files'
+                ? const [_ViewMode.list, _ViewMode.longNames]
+                : _ViewMode.values)
               IconButton(
                 icon: Icon(_modeIcon(mode),
                     color: _viewMode == mode ? scheme.primary : null),
                 tooltip: _modeLabel(mode),
                 onPressed: () => setState(() => _viewMode = mode),
               ),
-            if (_viewMode == _ViewMode.gallery)
+            if (widget.folder != 'files' && _viewMode == _ViewMode.gallery)
               IconButton(
                 icon: const Icon(Icons.more_vert),
                 tooltip: 'Gallery settings',
@@ -782,7 +788,7 @@ class _WelcomeScreen extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text('☁️', style: const TextStyle(fontSize: 64)),
+          Icon(Icons.cloud_outlined, size: 64, color: scheme.primary),
           const SizedBox(height: 24),
           Text('Welcome to Dudenest!',
               style: Theme.of(context)
