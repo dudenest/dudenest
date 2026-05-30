@@ -1051,6 +1051,7 @@ class _AccountListTile extends StatelessWidget {
                 PopupMenuItem(value: 'refresh',   child: ListTile(leading: Icon(Icons.refresh), title: Text('Refresh quota'))),
                 PopupMenuItem(value: 'scan',      child: ListTile(leading: Icon(Icons.cloud_sync), title: Text('Scan cloud now'))), // s320 Phase 1
                 PopupMenuItem(value: 'bootstrap', child: ListTile(leading: Icon(Icons.travel_explore), title: Text('Index ALL Drive files'))), // s321 Drive-wide bootstrap
+                PopupMenuItem(value: 'reconnect', child: ListTile(leading: Icon(Icons.vpn_key), title: Text('Re-authorize'))), // s329 #H: always-available re-auth path (e.g. scope upgrade drive.file→drive)
                 PopupMenuItem(value: 'edit',      child: ListTile(leading: Icon(Icons.edit), title: Text('Edit'))),
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'drain',     child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Remove (drain)', style: TextStyle(color: Colors.red)))),
@@ -1162,6 +1163,14 @@ class _AccountListTile extends StatelessWidget {
           if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Bootstrap failed: $e'), backgroundColor: Colors.red));
         }
+        break;
+      case 'reconnect': // s329 #H: re-authorize this account (e.g. to upgrade OAuth scope drive.file → drive)
+        // Flow: same as the per-tile "Reconnect" button used on revoked-token accounts. Opens the
+        // Add-Account modal scoped to "re-auth" semantics — user signs in to the same Google account,
+        // SaveToken overwrites the old token file with a fresh one carrying whatever scope the relay
+        // OAuth client currently advertises (post-v0.23.8: drive full scope). Existing accounts.json
+        // entry is preserved by browser/api.go autoAddAccount → ErrReAddDetected fast-path.
+        onReconnect();
         break;
       case 'edit':
         final changed = await showDialog<bool>(
