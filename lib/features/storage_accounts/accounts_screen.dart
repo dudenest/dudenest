@@ -159,14 +159,17 @@ class _AccountsScreenState extends State<AccountsScreen> {
       Expanded(child: canReorder
         ? ReorderableListView.builder(
             itemCount: sortedProviders.length,
-            // s329 fix #2: revert to default drag handles. Production Flutter web canvaskit empirically
-            // failed to render custom ReorderableDragStartListener+Icon(drag_indicator) — the widget
-            // tree had it (widget test PASS on `find.byIcon(Icons.drag_indicator)`) but canvaskit's
-            // painter never put pixels on screen, leaving the row with no visible drag affordance.
-            // Default handles render Flutter's built-in `Icons.drag_handle` (☰) on the trailing edge
-            // of every reorderable tile across all platforms (touch + mouse). Long-press timing on
-            // desktop is handled by Flutter ≥3.27 (mouse-down on the handle triggers drag immediately).
-            buildDefaultDragHandles: true,
+            // s329 fix #3 (final): two empirically-observed Flutter web canvaskit failure modes
+            // forced this third iteration:
+            //   1. buildDefaultDragHandles=true → handle renders Icons.drag_handle BUT on web with mouse
+            //      it requires long-press timing (no mouse-down=drag), so user "nie może złapać".
+            //   2. Icons.drag_handle / Icons.drag_indicator codepoints in bundled MaterialIcons font
+            //      paint as wrong glyph on production (e.g. fix#2 ☰ rendered as folder-looking icon).
+            //      Same family of bugs as s319 Icons.tune / Icons.photo_library codepoint shifts.
+            // Fix: wrap whole tile in custom ReorderableDragStartListener (mouse-down = drag), and use
+            // a pure-paint `_DragHandleHamburger` widget (no Material Icons font dependency) as the
+            // visual affordance. Cannot fail to render — three Container lines + Colors.grey.
+            buildDefaultDragHandles: false,
             onReorder: (oldIdx, newIdx) async {
               if (newIdx > oldIdx) newIdx -= 1; // Flutter quirk: insertion index after removal
               final movedProvider = sortedProviders[oldIdx];
@@ -188,15 +191,20 @@ class _AccountsScreenState extends State<AccountsScreen> {
               final admin = _adminFor(p);
               final keyId = admin?['id'] ?? p['email'] ?? p['id'] ?? i;
               final tileKey = ValueKey('account-$keyId'); // stable key required by ReorderableListView
-              return _AccountListTile(
-                key: tileKey, provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
-                // dragIndex intentionally not passed — buildDefaultDragHandles=true renders handle automatically
+              final tile = _AccountListTile(
+                provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
+                showHamburger: admin != null, // s329 #3: paint the always-visible handle inside the tile header
                 onReconnect: () async {
                   await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
                     builder: (_) => _AddAccountSheet(relay: widget.relay));
                   _load();
                 },
               );
+              // Wrap admin-matched tiles in the immediate-drag listener — clicking ANYWHERE on the
+              // Card body triggers reorder (matches user expectation "łapię i ciągnę"). Orphan tiles
+              // (admin==null) skip the wrapper so they cannot be dragged into the reorder payload.
+              if (admin == null) return KeyedSubtree(key: tileKey, child: tile);
+              return ReorderableDragStartListener(key: tileKey, index: i, child: tile);
             },
           )
         : ListView.builder(
@@ -975,13 +983,14 @@ class _AccountListTile extends StatelessWidget {
   final RelayClient relay;
   final VoidCallback onChanged;               // reload trigger after edit/drain
   final VoidCallback onReconnect;             // re-auth flow when provider unavailable
-  final int? dragIndex;                       // s320 fix #2: non-null when in ReorderableListView → renders drag handle
+  final int? dragIndex;                       // legacy s320 (kept for back-compat) — no longer used
+  final bool showHamburger;                   // s329 #3: true → paint pure-Container drag-cue at row start
 
   const _AccountListTile({
-    super.key, // required by ReorderableListView for stable identity across reorder
+    super.key,
     required this.provider, required this.admin, required this.relay,
     required this.onChanged, required this.onReconnect,
-    this.scan, this.dragIndex,
+    this.scan, this.dragIndex, this.showHamburger = false,
   });
 
   @override
@@ -1014,13 +1023,12 @@ class _AccountListTile extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // Header row: drag handle (when reorderable) + icon + id badge + email + connection state + popup menu
+          // Header row: drag-cue (when reorderable) + icon + id badge + email + connection state + popup menu
           Row(children: [
-            if (dragIndex != null) ReorderableDragStartListener(
-              index: dragIndex!,
-              child: const Padding(padding: EdgeInsets.only(right: 8),
-                child: Icon(Icons.drag_indicator, color: Colors.grey, size: 22)),
-            ), // s320 fix #2: explicit drag handle — mouse-down triggers reorder immediately (no long-press wait)
+            if (showHamburger) const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: _DragHandleHamburger(), // s329 #3: pure-paint cue; the tile itself is wrapped in ReorderableDragStartListener upstream
+            ),
             _providerIcon(type, available),
             const SizedBox(width: 8),
             if (id != null) _IDBadge(id: id, pinned: pinned),
@@ -1699,5 +1707,29 @@ class _ScanStatusLine extends StatelessWidget {
     if (d.inMinutes < 60) return '${d.inMinutes}m ago';
     if (d.inHours < 24) return '${d.inHours}h ago';
     return '${d.inDays}d ago';
+  }
+}
+
+// _DragHandleHamburger renders a three-bar drag affordance using only Container primitives
+// (no Material Icons font dependency). Replaces Icons.drag_handle / Icons.drag_indicator which
+// empirically rendered as wrong glyphs on production Flutter web canvaskit (codepoint shift in
+// bundled MaterialIcons-Regular.otf — same family of bug as s319 Icons.tune → drawer-looking glyph).
+// Cannot fail to paint — pure Container + color, no font lookup.
+class _DragHandleHamburger extends StatelessWidget {
+  const _DragHandleHamburger();
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 22, height: 22,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: List.generate(3, (_) => Container(
+          width: 18, height: 2,
+          margin: const EdgeInsets.symmetric(vertical: 1.5),
+          decoration: BoxDecoration(color: Colors.grey, borderRadius: BorderRadius.circular(1)),
+        )),
+      ),
+    );
   }
 }

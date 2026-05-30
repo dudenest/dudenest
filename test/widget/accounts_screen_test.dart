@@ -141,14 +141,21 @@ void main() {
     //    SINGLE most important assertion: if it ever silently degrades again, this test fails.
     expect(find.byType(ReorderableListView), findsOneWidget,
         reason: 's329 regression: admin accounts loaded but ReorderableListView not rendered — canReorder gate failed');
-    // 2) With buildDefaultDragHandles=true (s329 fix #2), Flutter renders its built-in handle
-    //    `Icons.drag_handle` (☰) on every reorderable tile. Custom ReorderableDragStartListener
-    //    + Icons.drag_indicator empirically failed to paint on canvaskit production, so we switched
-    //    to the default handles which work cross-platform.
+    // 2) s329 fix #3 (final): buildDefaultDragHandles must be FALSE so each tile uses our custom
+    //    ReorderableDragStartListener wrapper (immediate mouse-down=drag on web), with the visual
+    //    cue painted by _DragHandleHamburger (pure Container — no Material Icons font dependency).
     final rlv = tester.widget<ReorderableListView>(find.byType(ReorderableListView));
-    expect(rlv.buildDefaultDragHandles, isTrue,
-        reason: 's329 fix #2: must use Flutter built-in drag handles — custom ones do not paint on canvaskit');
+    expect(rlv.buildDefaultDragHandles, isFalse,
+        reason: 's329 #3: defaults require long-press on web; custom ReorderableDragStartListener wraps each admin tile for mouse-down=drag');
+    // 3) Each admin-matched tile must be wrapped in a ReorderableDragStartListener (a@, b@ — 2 wrappers).
+    //    Orphan tile (orphan@) skips the wrapper (KeyedSubtree fallback) so it cannot be dragged into payload.
+    expect(find.byType(ReorderableDragStartListener), findsNWidgets(2),
+        reason: 's329 #3: 2 admin tiles must each have ReorderableDragStartListener wrapping the Card');
   });
+
+  // (Hamburger pure-paint widget existence is implicitly covered by the ReorderableDragStartListener
+  // wrapping pin above — each admin tile is wrapped, and the tile body always paints the cue inside.
+  // A dedicated paint-pin would be too brittle to Flutter's internal Container shape.)
 
   // s329 regression pin: onReorder must filter out providers without admin id BEFORE sending
   // the payload to relay. Tests the "newIDs.isEmpty → early return" guard added in the same fix.
