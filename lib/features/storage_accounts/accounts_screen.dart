@@ -1748,7 +1748,8 @@ class _DrainProgressIndicatorState extends State<_DrainProgressIndicator> {
 
 // _ScanStatusLine renders compact P5c scan engine status inline in a tile:
 // "Cloud scan: 23 files indexed · 12 min ago" or "Scanning… 47 discovered so far" depending on state.
-// s320 Phase 1.
+// s320 Phase 1. s329 #G: surfaces `last_error` text (not just count) when errors > 0 — previously
+// "$errors errors" was opaque, user couldn't diagnose without SSH'ing into the relay.
 class _ScanStatusLine extends StatelessWidget {
   final Map<String, dynamic> scan;
   const _ScanStatusLine({required this.scan});
@@ -1780,11 +1781,33 @@ class _ScanStatusLine extends StatelessWidget {
       icon = Icons.cloud_queue;
       text = 'Cloud not yet scanned — tap menu → Scan cloud now';
     }
-    return Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-      Icon(icon, size: 13, color: color),
-      const SizedBox(width: 4),
-      Expanded(child: Text(text, style: TextStyle(color: color, fontSize: 11), overflow: TextOverflow.ellipsis)),
-    ]));
+    // s329 #G: when there are errors with a captured message AND we're not already in error state
+    // (which already shows the message inline), render a second line surfacing the actual error text.
+    // This handles partial-success runs (scan finished but with N errors) where the user previously saw
+    // only "$errors errors" with no clue what failed.
+    final showInlineErrorLine = errors > 0 && (lastErr ?? '').isNotEmpty && state != 'error' && state != 'running';
+    final children = <Widget>[
+      Row(children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 4),
+        Expanded(child: Text(text, style: TextStyle(color: color, fontSize: 11), overflow: TextOverflow.ellipsis)),
+      ]),
+      if (showInlineErrorLine) Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Tooltip(
+          message: lastErr!,
+          waitDuration: const Duration(milliseconds: 400),
+          child: Row(children: [
+            const Icon(Icons.error_outline, size: 12, color: Colors.red),
+            const SizedBox(width: 4),
+            Expanded(child: Text('Last error: $lastErr',
+              style: const TextStyle(color: Colors.red, fontSize: 11), overflow: TextOverflow.ellipsis)),
+          ]),
+        ),
+      ),
+    ];
+    return Padding(padding: const EdgeInsets.only(top: 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children));
   }
   static String _formatAgo(DateTime? t) {
     if (t == null) return 'never';

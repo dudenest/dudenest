@@ -218,6 +218,50 @@ void main() {
     expect(continueBtn.onPressed, isNull);
   });
 
+  // s329 #G regression pin: partial-success scans (finished, errors>0) must surface `last_error` text,
+  // not just the count. Previously "$errors errors" was opaque — user couldn't diagnose without SSH'ing
+  // into the relay. Now an additional red row "Last error: <msg>" with full text in Tooltip on hover.
+  testWidgets('s329 #G: scan error text surfaced when errors > 0 on finished run', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final relay = _relay((req) async {
+      if (req.url.path == '/providers') {
+        return http.Response(jsonEncode({'providers': [
+          {'id': 'gdrive_1', 'email': 'a@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 1.0, 'available': true, 'type': 'gdrive', 'file_count': 10},
+        ]}), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/accounts') {
+        return http.Response(jsonEncode({
+          'accounts': [{'id': 1, 'provider': 'gdrive', 'email': 'a@gmail.com', 'role': 'primary_write', 'priority': 0, 'status': 'active'}],
+          'policy': {'replication_factor': 2},
+        }), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/scan/status') {
+        return http.Response(jsonEncode({
+          'gdrive:a@gmail.com': {
+            'state': 'idle', // finished, not currently running, not in fatal error state
+            'files_discovered': 5,
+            'files_newly_indexed': 2,
+            'errors': 3,
+            'last_error': 'Drive API rate limit exceeded: 429',
+            'last_finished_at': DateTime.now().toUtc().subtract(const Duration(minutes: 5)).toIso8601String(),
+          }
+        }), 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('not found', 404);
+    });
+    await tester.pumpWidget(_wrap(AccountsScreen(relay: relay)));
+    await tester.pump(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200));
+    // 1) Top-line shows count of errors as before (backwards-compatible)
+    expect(find.textContaining('3 errors'), findsOneWidget, reason: 's329 #G: error count still shown for context');
+    // 2) NEW — second line surfaces actual error text from `last_error` field
+    expect(find.textContaining('Last error: Drive API rate limit'), findsOneWidget,
+        reason: 's329 #G: previously opaque "N errors" — user couldn\'t diagnose without SSH');
+    // 3) Red error_outline icon present to draw attention
+    expect(find.byIcon(Icons.error_outline), findsOneWidget,
+        reason: 's329 #G: visual cue that something needs attention');
+  });
+
   // s329 #C+D regression pin: badge row replaces "Priority N" with "Nth choice" (1-based ordinal)
   // + Active/Standby slot derived from priority < replication_factor. priority=0 + role=primary_write
   // → "1st choice" with ⭐ icon + "Active" chip. priority=2 with RF=2 → "3rd choice" + "Standby".
