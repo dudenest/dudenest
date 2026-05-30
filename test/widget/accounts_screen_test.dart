@@ -141,10 +141,13 @@ void main() {
     //    SINGLE most important assertion: if it ever silently degrades again, this test fails.
     expect(find.byType(ReorderableListView), findsOneWidget,
         reason: 's329 regression: admin accounts loaded but ReorderableListView not rendered — canReorder gate failed');
-    // 2) Drag handle icons must appear on tiles WITH admin metadata (a@ + b@), not on the orphan (orphan@).
-    //    Pre-fix dragIndex was always set, but the whole list fell back to plain ListView so nothing was visible.
-    expect(find.byIcon(Icons.drag_indicator), findsNWidgets(2),
-        reason: 's329: expected 2 drag handles (one per admin-matched tile), orphan tile gets none');
+    // 2) With buildDefaultDragHandles=true (s329 fix #2), Flutter renders its built-in handle
+    //    `Icons.drag_handle` (☰) on every reorderable tile. Custom ReorderableDragStartListener
+    //    + Icons.drag_indicator empirically failed to paint on canvaskit production, so we switched
+    //    to the default handles which work cross-platform.
+    final rlv = tester.widget<ReorderableListView>(find.byType(ReorderableListView));
+    expect(rlv.buildDefaultDragHandles, isTrue,
+        reason: 's329 fix #2: must use Flutter built-in drag handles — custom ones do not paint on canvaskit');
   });
 
   // s329 regression pin: onReorder must filter out providers without admin id BEFORE sending

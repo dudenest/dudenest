@@ -159,7 +159,14 @@ class _AccountsScreenState extends State<AccountsScreen> {
       Expanded(child: canReorder
         ? ReorderableListView.builder(
             itemCount: sortedProviders.length,
-            buildDefaultDragHandles: false, // s320 fix #2: explicit drag handle (no long-press timing surprises on web/desktop)
+            // s329 fix #2: revert to default drag handles. Production Flutter web canvaskit empirically
+            // failed to render custom ReorderableDragStartListener+Icon(drag_indicator) — the widget
+            // tree had it (widget test PASS on `find.byIcon(Icons.drag_indicator)`) but canvaskit's
+            // painter never put pixels on screen, leaving the row with no visible drag affordance.
+            // Default handles render Flutter's built-in `Icons.drag_handle` (☰) on the trailing edge
+            // of every reorderable tile across all platforms (touch + mouse). Long-press timing on
+            // desktop is handled by Flutter ≥3.27 (mouse-down on the handle triggers drag immediately).
+            buildDefaultDragHandles: true,
             onReorder: (oldIdx, newIdx) async {
               if (newIdx > oldIdx) newIdx -= 1; // Flutter quirk: insertion index after removal
               final movedProvider = sortedProviders[oldIdx];
@@ -180,10 +187,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
               final p = sortedProviders[i];
               final admin = _adminFor(p);
               final keyId = admin?['id'] ?? p['email'] ?? p['id'] ?? i;
-              final tileKey = ValueKey('account-$keyId'); // stable key required by ReorderableListView (handles admin==null)
+              final tileKey = ValueKey('account-$keyId'); // stable key required by ReorderableListView
               return _AccountListTile(
                 key: tileKey, provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
-                dragIndex: admin != null ? i : null, // s329: drag-handle only on tiles with admin id (others can still be dragged via the row but produce no payload)
+                // dragIndex intentionally not passed — buildDefaultDragHandles=true renders handle automatically
                 onReconnect: () async {
                   await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
                     builder: (_) => _AddAccountSheet(relay: widget.relay));
