@@ -106,6 +106,90 @@ void main() {
     expect(find.text('Phone (for 2FA, optional)'), findsOneWidget);
   });
 
+  // s329 regression pin: ReorderableListView with explicit drag handle MUST render whenever
+  // /admin/accounts returns at least one account. Pre-fix the canReorder gate had a second clause
+  // requiring `sortedProviders.any(_adminFor(p) != null)` which empirically evaluated false on
+  // desktop Chrome/Safari/Firefox, silently falling through to a plain ListView (no drag handle,
+  // no Reorder semantic node, no way to change Priority). Verified empirically against prcznsk@
+  // production session 2026-05-30: 4 providers + 3 admin accounts but no drag handle visible.
+  testWidgets('s329: drag handle renders when admin accounts are loaded (desktop Chrome regression)', (tester) async {
+    final relay = _relay((req) async {
+      if (req.url.path == '/providers') {
+        return http.Response(jsonEncode({'providers': [
+          {'id': 'gdrive_1', 'email': 'a@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 1.0, 'available': true, 'type': 'gdrive', 'file_count': 10},
+          {'id': 'gdrive_2', 'email': 'b@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 1.0, 'available': true, 'type': 'gdrive', 'file_count': 10},
+          {'id': 'gdrive_3', 'email': 'orphan@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 0.0, 'available': false, 'type': 'gdrive', 'file_count': 0, 'last_error': 'Token revoked'},
+        ]}), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/accounts') {
+        return http.Response(jsonEncode({
+          'accounts': [
+            {'id': 1, 'provider': 'gdrive', 'email': 'a@gmail.com', 'role': 'primary_write', 'priority': 0, 'status': 'active', 'quota_used_bytes': 1000000000, 'quota_total_bytes': 16000000000},
+            {'id': 2, 'provider': 'gdrive', 'email': 'b@gmail.com', 'role': 'replica_write', 'priority': 1, 'status': 'active', 'quota_used_bytes': 1000000000, 'quota_total_bytes': 16000000000},
+          ],
+          'policy': {'replication_factor': 2, 'diversity_required': false, 'soft_cap_default_pct': 90, 'hard_cap_default_pct': 98, 'age_based_rotation': false},
+        }), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/scan/status') {
+        return http.Response('{}', 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('not found', 404);
+    });
+    await tester.pumpWidget(_wrap(AccountsScreen(relay: relay)));
+    await tester.pump(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200));
+    // 1) ReorderableListView must be the chosen container — not plain ListView. This is the
+    //    SINGLE most important assertion: if it ever silently degrades again, this test fails.
+    expect(find.byType(ReorderableListView), findsOneWidget,
+        reason: 's329 regression: admin accounts loaded but ReorderableListView not rendered — canReorder gate failed');
+    // 2) Drag handle icons must appear on tiles WITH admin metadata (a@ + b@), not on the orphan (orphan@).
+    //    Pre-fix dragIndex was always set, but the whole list fell back to plain ListView so nothing was visible.
+    expect(find.byIcon(Icons.drag_indicator), findsNWidgets(2),
+        reason: 's329: expected 2 drag handles (one per admin-matched tile), orphan tile gets none');
+  });
+
+  // s329 regression pin: onReorder must filter out providers without admin id BEFORE sending
+  // the payload to relay. Tests the "newIDs.isEmpty → early return" guard added in the same fix.
+  testWidgets('s329: onReorder filters orphan providers and sends only known admin ids', (tester) async {
+    final reorderPayloads = <List<dynamic>>[];
+    final relay = _relay((req) async {
+      if (req.url.path == '/providers') {
+        return http.Response(jsonEncode({'providers': [
+          {'id': 'gdrive_1', 'email': 'a@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 1.0, 'available': true, 'type': 'gdrive', 'file_count': 10},
+          {'id': 'gdrive_2', 'email': 'b@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 1.0, 'available': true, 'type': 'gdrive', 'file_count': 10},
+        ]}), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/accounts' && req.method == 'GET') {
+        return http.Response(jsonEncode({
+          'accounts': [
+            {'id': 1, 'provider': 'gdrive', 'email': 'a@gmail.com', 'role': 'primary_write', 'priority': 0, 'status': 'active'},
+            {'id': 2, 'provider': 'gdrive', 'email': 'b@gmail.com', 'role': 'replica_write', 'priority': 1, 'status': 'active'},
+          ],
+          'policy': {},
+        }), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/accounts/reorder' && req.method == 'POST') {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        reorderPayloads.add(body['ids'] as List<dynamic>);
+        return http.Response(jsonEncode({'status': 'ok', 'accounts': []}), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/scan/status') {
+        return http.Response('{}', 200, headers: {'content-type': 'application/json'});
+      }
+      return http.Response('not found', 404);
+    });
+    await tester.pumpWidget(_wrap(AccountsScreen(relay: relay)));
+    await tester.pump(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200));
+    // Find the ReorderableListView and trigger a programmatic reorder (swap 0↔1).
+    final rlv = tester.widget<ReorderableListView>(find.byType(ReorderableListView));
+    rlv.onReorder(0, 2); // move idx 0 to after idx 1 (Flutter quirk: newIdx=length means "to end")
+    await tester.pump(); await tester.pump();
+    // The first reorder triggers a follow-up GET /admin/accounts via _load() — payload was sent BEFORE that.
+    expect(reorderPayloads.length, greaterThanOrEqualTo(1),
+        reason: 's329: reorder POST should fire once for the swap');
+    expect(reorderPayloads.first, [2, 1],
+        reason: 's329: ids must be ints in new order; would have hit relay HTTP 400 pre-fix');
+  });
+
   testWidgets('Method E Continue button disabled without email', (tester) async {
     final relay = _relay((req) async {
       return http.Response('{"providers":[]}', 200, headers: {'content-type': 'application/json'});

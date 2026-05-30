@@ -145,13 +145,14 @@ class _AccountsScreenState extends State<AccountsScreen> {
       final pb = _adminFor(b)?['priority'] as int? ?? 999;
       return pa.compareTo(pb);
     });
-    // ReorderableListView enabled only when admin metadata is present (Phase α/β/γ relay).
-    // Legacy relays (no _adminAccounts) fall back to plain ListView — drag-drop hidden because
-    // there's no Priority concept to reorder.
-    // s320 fix #2: relax canReorder — only require ANY provider to have admin metadata (was: every).
-    // Pre-fix: a single legacy provider without admin entry disabled drag-drop for the whole list.
-    // Reorder skips providers without admin id (sent as no-op).
-    final canReorder = _adminAccounts.isNotEmpty && sortedProviders.any((p) => _adminFor(p) != null);
+    // s329 fix: ReorderableListView is enabled whenever any admin metadata is loaded. The previous
+    // canReorder gate also required `sortedProviders.any((p) => _adminFor(p) != null)` which was a
+    // fragile second check — empirically on Chrome/Safari/Firefox desktop the gate evaluated false
+    // and silently fell through to a plain ListView (no drag-handle, no Reorder semantic node),
+    // even though /admin/accounts returned 3 matched accounts. Single source of truth = the load
+    // result itself. Providers without admin metadata still render in the list; onReorder filters
+    // them out of the payload so the backend never sees an unknown id.
+    final canReorder = _adminAccounts.isNotEmpty;
     return Column(children: [
       _StorageSummaryCard(providers: _providers),
       if (_adminPolicy.isNotEmpty) _PolicyCard(policy: _adminPolicy, relay: widget.relay, onChanged: _load),
@@ -165,6 +166,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               final newOrderProviders = [...sortedProviders]..removeAt(oldIdx)..insert(newIdx, movedProvider);
               // Drop providers without admin id from reorder payload — relay accepts subset (only re-prioritizes known ids).
               final newIDs = newOrderProviders.map((p) => _adminFor(p)?['id'] as int?).whereType<int>().toList();
+              if (newIDs.isEmpty) return; // nothing reorderable in the new sequence
               try {
                 await widget.relay.reorderAdminAccounts(newIDs);
                 await _load();
@@ -181,7 +183,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               final tileKey = ValueKey('account-$keyId'); // stable key required by ReorderableListView (handles admin==null)
               return _AccountListTile(
                 key: tileKey, provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
-                dragIndex: i, // s320 fix #2: enables explicit drag handle in tile
+                dragIndex: admin != null ? i : null, // s329: drag-handle only on tiles with admin id (others can still be dragged via the row but produce no payload)
                 onReconnect: () async {
                   await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
                     builder: (_) => _AddAccountSheet(relay: widget.relay));
