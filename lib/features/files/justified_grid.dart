@@ -172,7 +172,12 @@ class _JustifiedGridState extends State<JustifiedGrid> {
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (ctx, box) {
       final avail = box.maxWidth - (widget.settings.showDateScrubbar ? 30 : 0);
-      final targetH = widget.settings.justifiedRowHeight;
+      // s329 Feature 6: when autoResize=true, scale target row height proportionally to viewport.
+      // This eliminates the "tile jump-back" symptom — previously when the last photo in a group
+      // wrapped to a new row, the remaining tiles in the wider row got more horizontal budget
+      // and visually grew back to original size. With viewport-derived targetH, the per-row scale
+      // factor is constant across resize because targetH itself shrinks/grows with viewport.
+      final targetH = widget.settings.effectiveRowHeight(avail);
       double scrollPos = 0;
 
       return CustomScrollView(

@@ -838,6 +838,7 @@ class _GallerySettingsSheetState extends State<_GallerySettingsSheet> {
     _s = GallerySettings(
       viewMode: widget.initial.viewMode,
       justifiedRowHeight: widget.initial.justifiedRowHeight,
+      autoResizeRowHeight: widget.initial.autoResizeRowHeight,
       masonryColumns: widget.initial.masonryColumns,
       groupByDate: widget.initial.groupByDate,
       showDateHeaders: widget.initial.showDateHeaders,
@@ -855,6 +856,7 @@ class _GallerySettingsSheetState extends State<_GallerySettingsSheet> {
   GallerySettings _with({
     GalleryViewMode? viewMode,
     double? justifiedRowHeight,
+    bool? autoResizeRowHeight,
     int? masonryColumns,
     bool? groupByDate,
     bool? showDateHeaders,
@@ -868,6 +870,7 @@ class _GallerySettingsSheetState extends State<_GallerySettingsSheet> {
       GallerySettings(
         viewMode: viewMode ?? _s.viewMode,
         justifiedRowHeight: justifiedRowHeight ?? _s.justifiedRowHeight,
+        autoResizeRowHeight: autoResizeRowHeight ?? _s.autoResizeRowHeight,
         masonryColumns: masonryColumns ?? _s.masonryColumns,
         groupByDate: groupByDate ?? _s.groupByDate,
         showDateHeaders: showDateHeaders ?? _s.showDateHeaders,
@@ -974,16 +977,30 @@ class _GallerySettingsSheetState extends State<_GallerySettingsSheet> {
               }).toList()),
               const SizedBox(height: 16),
               if (_s.viewMode == GalleryViewMode.justified) ...[
-                Text('Row height: ${_s.justifiedRowHeight.round()} px',
+                // s329 Feature 6: auto-resize toggle + extended slider range 20-400 (was 120-320).
+                // When auto ON, the slider value is grayed out and serves only as the maximum cap
+                // for viewport-derived row height. When OFF, slider value is used as fixed targetH.
+                SwitchListTile.adaptive(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Auto-resize with browser window'),
+                  subtitle: const Text('Tiles scale proportionally to viewport — no jump-back on resize'),
+                  value: _s.autoResizeRowHeight,
+                  onChanged: (v) => setState(() => _s = _with(autoResizeRowHeight: v)),
+                ),
+                Text(
+                    _s.autoResizeRowHeight
+                        ? 'Max row height (auto): ${_s.justifiedRowHeight.round()} px'
+                        : 'Row height (fixed): ${_s.justifiedRowHeight.round()} px',
                     style: Theme.of(context)
                         .textTheme
                         .labelMedium
                         ?.copyWith(color: scheme.onSurfaceVariant)),
                 Slider(
-                  value: _s.justifiedRowHeight,
-                  min: 120,
-                  max: 320,
-                  divisions: 10,
+                  value: _s.justifiedRowHeight.clamp(GallerySettings.minRowHeight, GallerySettings.maxRowHeight),
+                  min: GallerySettings.minRowHeight, // 20 — user request 2026-05-30
+                  max: GallerySettings.maxRowHeight, // 400 — extended from 320
+                  divisions: ((GallerySettings.maxRowHeight - GallerySettings.minRowHeight) / 10).round(), // 10px steps → 38 divisions
                   label: '${_s.justifiedRowHeight.round()} px',
                   onChanged: (v) =>
                       setState(() => _s = _with(justifiedRowHeight: v)),

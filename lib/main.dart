@@ -469,20 +469,30 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
           },
         ),
       ),
-      // Row height (justified only)
+      // Row height (justified only) — s329 Feature 6: auto-resize toggle + slider 20-400px.
       if (s.viewMode == GalleryViewMode.justified) ...[
+        SwitchListTile.adaptive(
+          dense: true,
+          title: const Text('Auto-resize with browser window'),
+          subtitle: const Text('Tiles scale proportionally to viewport (recommended)'),
+          value: s.autoResizeRowHeight,
+          onChanged: (v) { s.autoResizeRowHeight = v; _save(); },
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
           child: Row(children: [
-            Text('Row height: ${s.justifiedRowHeight.round()}px',
+            Text(
+                s.autoResizeRowHeight
+                    ? 'Max row height (auto): ${s.justifiedRowHeight.round()}px'
+                    : 'Row height (fixed): ${s.justifiedRowHeight.round()}px',
                 style: Theme.of(context).textTheme.bodySmall),
           ]),
         ),
         Slider(
-          value: s.justifiedRowHeight,
-          min: 100,
-          max: 320,
-          divisions: 11,
+          value: s.justifiedRowHeight.clamp(GallerySettings.minRowHeight, GallerySettings.maxRowHeight),
+          min: GallerySettings.minRowHeight, // 20 — user request 2026-05-30 ("min 20px")
+          max: GallerySettings.maxRowHeight, // 400 — extended from 320
+          divisions: ((GallerySettings.maxRowHeight - GallerySettings.minRowHeight) / 10).round(),
           label: '${s.justifiedRowHeight.round()}px',
           onChanged: (v) {
             s.justifiedRowHeight = v;
