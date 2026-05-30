@@ -412,16 +412,23 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
   }
 
   // Polling fallback: checks /providers every 3s
-  // Detects: (1) new provider added, (2) previously unavailable provider became available (re-auth)
+  // Detects: (1) new provider added, (2) previously unavailable→available (re-auth of broken token),
+  //          (3) s329 #I: last_authorized_at bumped on existing already-available provider (scope upgrade re-auth).
   void _startPollingFallback(List<Map<String, dynamic>> beforeProviders) {
     final countBefore = beforeProviders.length;
-    // Emails of providers that were unavailable before auth — re-auth makes them available again
     final unavailableBefore = beforeProviders
         .where((p) => p['available'] != true)
         .map((p) => p['email'] as String? ?? '')
         .where((e) => e.isNotEmpty)
         .toSet();
+    // s329 #I: snapshot last_authorized_at per email — bump after re-auth signals success even for accounts that were already available=true
+    final authAtBefore = <String, int>{
+      for (final p in beforeProviders)
+        if ((p['email'] as String? ?? '').isNotEmpty)
+          (p['email'] as String): ((p['last_authorized_at'] as num?)?.toInt() ?? 0),
+    };
     _pollTimer?.cancel();
+    final pollStartedAt = DateTime.now();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       if (_step == _AddStep.done) { _pollTimer?.cancel(); return; }
       try {
@@ -429,14 +436,27 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
         final newlyAvailable = providers.where(
           (p) => unavailableBefore.contains(p['email'] as String? ?? '') && p['available'] == true
         ).toList();
+        // s329 #I: bumped — provider's last_authorized_at increased vs pre-reauth snapshot
+        final bumped = providers.where((p) {
+          final email = p['email'] as String? ?? '';
+          final now = (p['last_authorized_at'] as num?)?.toInt() ?? 0;
+          final before = authAtBefore[email] ?? 0;
+          return email.isNotEmpty && now > before && now > 0;
+        }).toList();
         Map<String, dynamic>? resolved;
         if (providers.length > countBefore) resolved = providers.last; // new provider
-        else if (newlyAvailable.isNotEmpty) resolved = newlyAvailable.first; // re-authed provider
+        else if (newlyAvailable.isNotEmpty) resolved = newlyAvailable.first; // re-authed unavailable provider
+        else if (bumped.isNotEmpty) resolved = bumped.first; // re-authed already-available provider (scope upgrade)
         if (resolved != null) {
           final email = resolved['email'] as String?;
           if (mounted) setState(() { _oauthEmail = email; _step = _AddStep.done; });
           _pollTimer?.cancel();
           _wsChannel?.sink.close();
+          return;
+        }
+        // s329 #I safety net: after 90s without detection, surface manual refresh prompt instead of hanging forever
+        if (DateTime.now().difference(pollStartedAt).inSeconds >= 90 && _browserError == null) {
+          if (mounted) setState(() => _browserError = 'Authentication may have completed. Close this dialog and check the account list — or press the Cancel button to try again.');
         }
       } catch (_) {}
     });
