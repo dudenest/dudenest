@@ -42,11 +42,18 @@ class RelayClient {
       '/ws';
 
   dynamic _processResponse(http.Response resp, String context) {
-    if (resp.statusCode != 200) {
+    // s329 #4: accept both 200 (sync OK) and 202 Accepted (fire-and-forget async). Backend uses
+    // 202 for endpoints that queue work in a goroutine (bulk /admin/accounts/refresh-quota,
+    // /admin/scan/bootstrap, per-account refresh-quota) — clients used to see RelayException
+    // "HTTP 202" because the check below was `!= 200`. Now both are success.
+    if (resp.statusCode != 200 && resp.statusCode != 202) {
       throw RelayException('$context: HTTP ${resp.statusCode}',
           statusCode: resp.statusCode, body: resp.body);
     }
     final contentType = resp.headers['content-type'] ?? '';
+    // 202 may carry an empty body (some endpoints don't bother with JSON). Return empty map so
+    // callers don't fail on jsonDecode("").
+    if (resp.statusCode == 202 && resp.body.isEmpty) return <String, dynamic>{};
     if (!contentType.contains('application/json')) {
       throw RelayException('$context: Expected JSON but got $contentType',
           statusCode: resp.statusCode, body: resp.body);

@@ -136,4 +136,51 @@ void main() {
               .having((e) => e.statusCode, 'statusCode', 500)));
     });
   });
+
+  // s329 #4 regression pins: backend uses HTTP 202 Accepted for fire-and-forget endpoints
+  // (bulk /admin/accounts/refresh-quota, /admin/scan/bootstrap, per-account refresh-quota).
+  // _processResponse used to throw RelayException for anything != 200 — verified empirically
+  // on 2026-05-30 production session prcznsk@: "Refresh failed: HTTP 202 (Status: 202)" and
+  // "Bootstrap failed: HTTP 202 (Status: 202)". Fix must accept BOTH 200 and 202.
+  group('RelayClient._processResponse — 202 Accepted support (s329 #4)', () {
+    test('refreshAllAdminQuota completes on 202 with JSON body', () async {
+      final c = _client((req) async => http.Response(
+          jsonEncode({'status': 'accepted', 'accounts_queued': 3}), 202,
+          headers: {'content-type': 'application/json'}));
+      // Should NOT throw — 202 is the documented bulk fire-and-forget response.
+      final result = await c.refreshAllAdminQuota();
+      expect(result['status'], 'accepted');
+      expect(result['accounts_queued'], 3);
+    });
+
+    test('bootstrapWholeDrive completes on 202 with JSON body', () async {
+      final c = _client((req) async => http.Response(
+          jsonEncode({'status': 'accepted', 'note': 'bootstrap running'}), 202,
+          headers: {'content-type': 'application/json'}));
+      final result = await c.bootstrapWholeDrive('gdrive_1');
+      expect(result['status'], 'accepted');
+    });
+
+    test('refreshAdminQuota completes on 202', () async {
+      final c = _client((req) async => http.Response(
+          jsonEncode({'status': 'accepted'}), 202,
+          headers: {'content-type': 'application/json'}));
+      await expectLater(c.refreshAdminQuota(1), completes);
+    });
+
+    test('still throws on 400 (real client error, not 202 race)', () async {
+      final c = _client((req) async => http.Response('bad payload', 400));
+      expect(
+          () => c.refreshAllAdminQuota(),
+          throwsA(isA<RelayException>()
+              .having((e) => e.statusCode, 'statusCode', 400)));
+    });
+
+    test('accepts 202 with empty body (no content-type) — returns empty map', () async {
+      final c = _client((req) async => http.Response('', 202));
+      // Server may legitimately respond 202 with no body — must not throw "Expected JSON".
+      final result = await c.refreshAllAdminQuota();
+      expect(result, isA<Map>());
+    });
+  });
 }
