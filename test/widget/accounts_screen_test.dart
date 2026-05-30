@@ -181,7 +181,7 @@ void main() {
     await tester.pump(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200));
     // Find the ReorderableListView and trigger a programmatic reorder (swap 0↔1).
     final rlv = tester.widget<ReorderableListView>(find.byType(ReorderableListView));
-    rlv.onReorder(0, 2); // move idx 0 to after idx 1 (Flutter quirk: newIdx=length means "to end")
+    rlv.onReorder!(0, 2); // move idx 0 to after idx 1 (Flutter quirk: newIdx=length means "to end")
     await tester.pump(); await tester.pump();
     // The first reorder triggers a follow-up GET /admin/accounts via _load() — payload was sent BEFORE that.
     expect(reorderPayloads.length, greaterThanOrEqualTo(1),
