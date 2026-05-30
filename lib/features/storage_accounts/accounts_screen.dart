@@ -194,6 +194,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               final tile = _AccountListTile(
                 provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
                 showHamburger: admin != null, // s329 #3: paint the always-visible handle inside the tile header
+                replicationFactor: (_adminPolicy['replication_factor'] as int?) ?? 2, // s329 #C+D: drives Active/Standby slot
                 onReconnect: () async {
                   await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
                     builder: (_) => _AddAccountSheet(relay: widget.relay));
@@ -214,6 +215,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               final admin = _adminFor(p);
               return _AccountListTile(
                 provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
+                replicationFactor: (_adminPolicy['replication_factor'] as int?) ?? 2, // s329 #C+D
                 onReconnect: () async {
                   await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
                     builder: (_) => _AddAccountSheet(relay: widget.relay));
@@ -1005,12 +1007,14 @@ class _AccountListTile extends StatelessWidget {
   final VoidCallback onReconnect;             // re-auth flow when provider unavailable
   final int? dragIndex;                       // legacy s320 (kept for back-compat) — no longer used
   final bool showHamburger;                   // s329 #3: true → paint pure-Container drag-cue at row start
+  final int replicationFactor;                // s329 #C+D: needed to compute Active/Standby slot (priority < RF = Active)
 
   const _AccountListTile({
     super.key,
     required this.provider, required this.admin, required this.relay,
     required this.onChanged, required this.onReconnect,
     this.scan, this.dragIndex, this.showHamburger = false,
+    this.replicationFactor = 2, // matches backend default; overridden from _adminPolicy when available
   });
 
   @override
@@ -1079,15 +1083,17 @@ class _AccountListTile extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 8),
-          // Role + priority badges (only when admin endpoint is reachable)
+          // s329 #C+D: simplified badge row — ⭐ "Nth choice" + Active/Standby chip for standard roles,
+          // or just _RoleBadge for exotic states (cold_archive/drain/quarantine/read_only).
+          // Reason: prior "Priority 0/1/2" was unintuitive (0 = best, counter to natural ordering).
+          // Active/Standby surfaces whether this account is currently in the write pool (priority < RF).
           if (admin != null) Row(children: [
-            _RoleBadge(role: role),
-            const SizedBox(width: 8),
-            if (priority != null) Chip(
-              label: Text('Priority $priority', style: const TextStyle(fontSize: 11)),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-            ),
+            if (role == 'primary_write' || role == 'replica_write') ...[
+              if (priority != null) _ChoiceBadge(priority: priority, isPrimary: priority == 0),
+              const SizedBox(width: 8),
+              if (priority != null) _SlotBadge(active: priority < replicationFactor),
+            ] else
+              _RoleBadge(role: role), // exotic states keep the descriptive badge
             const Spacer(),
             if (!available) const Text('reconnect needed', style: TextStyle(color: Colors.red, fontSize: 11)),
           ]),
@@ -1277,6 +1283,57 @@ class _RoleBadge extends StatelessWidget {
       label: Text(label, style: TextStyle(fontSize: 11, color: color.shade900)),
       backgroundColor: color.shade50,
       side: BorderSide(color: color.shade200),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+// s329 #C+D: human-readable ordinal — "1st", "2nd", "3rd", "Nth choice" — replaces unintuitive
+// "Priority 0/1/2" numbering. English follows -st/-nd/-rd/-th rule with 11/12/13 exceptions.
+String _ordinal(int n) {
+  if (n < 0) return n.toString();
+  final mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return '${n}th';
+  return '$n${switch (n % 10) { 1 => 'st', 2 => 'nd', 3 => 'rd', _ => 'th' }}';
+}
+
+// _ChoiceBadge displays "1st choice" / "2nd choice" / etc. with a ⭐ icon for priority=0 (Primary).
+// Replaces the prior "Priority N" chip (counter-intuitive: 0 was best).
+// Note: priority is the user-controlled order (set via drag-drop); displayed as 1-based to user.
+class _ChoiceBadge extends StatelessWidget {
+  final int priority; // 0-based from backend
+  final bool isPrimary; // true when priority == 0 → render ⭐ icon
+  const _ChoiceBadge({required this.priority, required this.isPrimary});
+  @override
+  Widget build(BuildContext context) {
+    final label = '${_ordinal(priority + 1)} choice'; // user-facing 1-based ordinal
+    final color = isPrimary ? Colors.amber : Colors.blueGrey;
+    return Chip(
+      avatar: isPrimary ? Icon(Icons.star, size: 14, color: color.shade700) : null,
+      label: Text(label, style: TextStyle(fontSize: 11, color: color.shade900, fontWeight: isPrimary ? FontWeight.w700 : FontWeight.w500)),
+      backgroundColor: color.shade50,
+      side: BorderSide(color: color.shade200),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+// _SlotBadge — Active (in write pool) vs Standby (eligible but outside replication_factor cut).
+// Active means SelectReplicas will pick this account for new uploads at current RF.
+// Approximation: priority < RF + role∈{primary_write, replica_write}. Doesn't account for hard-cap
+// / diversity / content-type constraints (those are per-upload runtime decisions in backend).
+class _SlotBadge extends StatelessWidget {
+  final bool active;
+  const _SlotBadge({required this.active});
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = active ? ('Active', Colors.green) : ('Standby', Colors.grey);
+    return Chip(
+      label: Text(label, style: TextStyle(fontSize: 11, color: color.shade900, fontWeight: FontWeight.w600)),
+      backgroundColor: color.shade50,
+      side: BorderSide(color: color.shade300),
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.compact,
     );

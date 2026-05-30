@@ -217,4 +217,48 @@ void main() {
     );
     expect(continueBtn.onPressed, isNull);
   });
+
+  // s329 #C+D regression pin: badge row replaces "Priority N" with "Nth choice" (1-based ordinal)
+  // + Active/Standby slot derived from priority < replication_factor. priority=0 + role=primary_write
+  // → "1st choice" with ⭐ icon + "Active" chip. priority=2 with RF=2 → "3rd choice" + "Standby".
+  // Reason: user feedback 2026-05-30 — "Priority 0/1/2 is unintuitive". Verified empirically.
+  testWidgets('s329 #C+D: badge row shows ordinal choice + Active/Standby slot', (tester) async {
+    // Tall surface so all 3 tiles fit in viewport (otherwise Sliver lazy-build skips offscreen text).
+    await tester.binding.setSurfaceSize(const Size(1200, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final relay = _relay((req) async {
+      if (req.url.path == '/providers') {
+        return http.Response(jsonEncode({'providers': [
+          {'id': 'gdrive_1', 'email': 'a@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 1.0, 'available': true, 'type': 'gdrive', 'file_count': 10},
+          {'id': 'gdrive_2', 'email': 'b@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 1.0, 'available': true, 'type': 'gdrive', 'file_count': 10},
+          {'id': 'gdrive_3', 'email': 'c@gmail.com', 'quota_total_gb': 15.0, 'quota_used_gb': 1.0, 'available': true, 'type': 'gdrive', 'file_count': 10},
+        ]}), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/accounts') {
+        return http.Response(jsonEncode({
+          'accounts': [
+            {'id': 1, 'provider': 'gdrive', 'email': 'a@gmail.com', 'role': 'primary_write', 'priority': 0, 'status': 'active'},
+            {'id': 2, 'provider': 'gdrive', 'email': 'b@gmail.com', 'role': 'replica_write', 'priority': 1, 'status': 'active'},
+            {'id': 3, 'provider': 'gdrive', 'email': 'c@gmail.com', 'role': 'replica_write', 'priority': 2, 'status': 'active'},
+          ],
+          'policy': {'replication_factor': 2}, // RF=2 → priorities 0,1 = Active; priority 2 = Standby
+        }), 200, headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/admin/scan/status') return http.Response('{}', 200, headers: {'content-type': 'application/json'});
+      return http.Response('not found', 404);
+    });
+    await tester.pumpWidget(_wrap(AccountsScreen(relay: relay)));
+    await tester.pump(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200));
+    // 1) "1st choice" + "2nd choice" + "3rd choice" — 1-based ordinal labels (replaces Priority 0/1/2).
+    expect(find.text('1st choice'), findsOneWidget, reason: 's329 #C: priority=0 → "1st choice"');
+    expect(find.text('2nd choice'), findsOneWidget, reason: 's329 #C: priority=1 → "2nd choice"');
+    expect(find.text('3rd choice'), findsOneWidget, reason: 's329 #C: priority=2 → "3rd choice"');
+    // 2) Old "Priority N" labels MUST be gone — user explicitly rejected this naming.
+    expect(find.textContaining('Priority '), findsNothing, reason: 's329 #C: legacy "Priority N" chip removed');
+    // 3) ⭐ icon visible exactly once — only on priority=0 (Primary).
+    expect(find.byIcon(Icons.star), findsOneWidget, reason: 's329 #C: ⭐ Primary indicator on priority=0 only');
+    // 4) Fix D: Active/Standby slot chip — 2 accounts Active (priorities 0,1 < RF=2), 1 Standby (priority 2).
+    expect(find.text('Active'), findsNWidgets(2), reason: 's329 #D: priorities < RF=2 → Active');
+    expect(find.text('Standby'), findsOneWidget, reason: 's329 #D: priority >= RF=2 → Standby');
+  });
 }
