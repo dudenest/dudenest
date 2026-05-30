@@ -6,6 +6,8 @@ import '../storage_accounts/accounts_screen.dart';
 import '../upload/upload_screen.dart';
 import '../files/gallery_screen.dart';
 import '../files/gallery_settings.dart';
+import '../files/files_view_settings.dart'; // s329 Feature 5: /Files filter+sort+group
+import '../files/files_grouped_view.dart';   // s329 Feature 5: grouped section renderer
 import '../files/media_viewer.dart';
 import '../files/tile_manifest_cache.dart';
 
@@ -33,6 +35,7 @@ class _RelayScreenState extends State<RelayScreen> {
   final Set<String> _selected = {};
   bool get _selectionMode => _selected.isNotEmpty;
   GallerySettings _gallerySettings = GallerySettings();
+  FilesViewSettings _filesViewSettings = const FilesViewSettings(); // s329 Feature 5
 
   @override
   void didChangeDependencies() {
@@ -42,6 +45,12 @@ class _RelayScreenState extends State<RelayScreen> {
       _applyCacheLimits(s);
       setState(() => _gallerySettings = s);
     });
+    if (widget.folder == 'files') {
+      FilesViewSettings.load().then((s) { // s329 Feature 5: hydrate persisted /Files view state
+        if (!mounted) return;
+        setState(() => _filesViewSettings = s);
+      });
+    }
   }
 
   static const _imageExts = {
@@ -445,6 +454,64 @@ class _RelayScreenState extends State<RelayScreen> {
     );
   }
 
+  // s329 Feature 5: grouped/sorted/filtered Files view. groupAndSort() is a pure helper
+  // (unit-tested in test/unit/files_view_settings_test.dart); this just wires _filesViewSettings
+  // into FilesGroupedView and reuses _buildList's ListTile rendering for individual files.
+  Widget _buildGroupedFiles() {
+    final groups = groupAndSort(_visibleFiles, _filesViewSettings);
+    Widget tile(BuildContext ctx, Map<String, dynamic> f) {
+      final id = f['file_id'] as String? ?? '';
+      final name = f['name'] as String? ?? id;
+      final ext = _extensionLabel(name);
+      final isSelected = _selected.contains(id);
+      return ListTile(
+        selected: isSelected, dense: true,
+        leading: _buildLeading(name, id),
+        title: Text(name, overflow: TextOverflow.ellipsis),
+        subtitle: Text('${ext.isEmpty ? 'file' : ext} · ${_formatSize(f['size'])}'),
+        trailing: _selectionMode
+            ? Icon(isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isSelected ? Theme.of(ctx).colorScheme.primary : Colors.grey)
+            : _actionRow(id, name),
+        onTap: () => _selectionMode ? _toggleSelect(id) : _openFile(ctx, id, name),
+        onLongPress: () => _toggleSelect(id),
+      );
+    }
+    final s = _filesViewSettings;
+    final hasFilters = s.searchQuery.isNotEmpty || s.typeFilters.isNotEmpty;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (hasFilters) Container( // s329 Feature 5: active filter strip — visible cue + tap to edit
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          if (s.searchQuery.isNotEmpty) InputChip(
+            avatar: const Icon(Icons.search, size: 16),
+            label: Text('"${s.searchQuery}"'),
+            onDeleted: () => _saveFilesViewSettings(s.copyWith(searchQuery: '')),
+          ),
+          for (final t in s.typeFilters) InputChip(
+            label: Text(t[0].toUpperCase() + t.substring(1)),
+            onDeleted: () => _saveFilesViewSettings(s.copyWith(typeFilters: {...s.typeFilters}..remove(t))),
+          ),
+        ]),
+      ),
+      Expanded(child: FilesGroupedView(groups: groups, itemBuilder: tile)),
+    ]);
+  }
+
+  Future<void> _openFilesFilters() async {
+    final updated = await showModalBottomSheet<FilesViewSettings>(
+      context: context, isScrollControlled: true, useSafeArea: true,
+      builder: (_) => FilesFilterSheet(initial: _filesViewSettings),
+    );
+    if (updated != null) _saveFilesViewSettings(updated);
+  }
+
+  void _saveFilesViewSettings(FilesViewSettings s) {
+    setState(() => _filesViewSettings = s);
+    s.save(); // fire-and-forget — local-only persistence, no error path
+  }
+
   String _extensionLabel(String name) {
     final parts = name.split('.');
     if (parts.length < 2 || parts.last.isEmpty) return 'file';
@@ -533,9 +600,11 @@ class _RelayScreenState extends State<RelayScreen> {
     if (_visibleFiles.isEmpty)
       return _NoFilesEmptyState(relay: widget.relay, onUploaded: _load);
     if (widget.folder == 'files') {
+      // s329 Feature 5: grouped view (default) — uses _filesViewSettings (group/sort/filter/search).
+      // longNames mode kept as the alternative flat-list rendering for users preferring no grouping.
       return _viewMode == _ViewMode.longNames
           ? _buildLongNames()
-          : _buildList();
+          : _buildGroupedFiles();
     }
     return switch (_viewMode) {
       _ViewMode.gallery => _buildGallery(),
@@ -625,6 +694,11 @@ class _RelayScreenState extends State<RelayScreen> {
                 tooltip: 'Gallery settings',
                 onPressed: _openGallerySettings,
               ),
+            if (widget.folder == 'files') IconButton( // s329 Feature 5: open group/sort/filter sheet
+              icon: const Icon(Icons.tune),
+              tooltip: 'Group, sort, filter',
+              onPressed: _openFilesFilters,
+            ),
             IconButton(
                 icon: const Icon(Icons.refresh),
                 onPressed: _load,
