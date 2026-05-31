@@ -12,7 +12,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: subosito/flutter-action@v2
         with:
           channel: stable  # font_awesome_flutter removed 2026-05-19, so we no longer need the 3.27.x pin that was blocking Dart 3 strict; latest stable is now fine
@@ -27,7 +27,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -48,14 +48,14 @@ jobs:
           flutter build web --release --pwa-strategy none --no-tree-shake-icons "--dart-define=APP_VERSION=$VERSION"
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -67,10 +67,25 @@ jobs:
     needs: build
     runs-on: [self-hosted, netol-swarm]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Mirror to registry.netol.io (s332 — eliminates ghcr SPOF at Swarm runtime)
+        env:
+          REGISTRY_NETOL_TOKEN: ${{ secrets.GITLAB_NETOL_TOKEN }}
+          REGISTRY_NETOL_USER: ${{ secrets.GITLAB_NETOL_USER }}
+          MIRROR_NAME: dudenest/dudenest
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker pull ${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          echo "$REGISTRY_NETOL_TOKEN" | docker login registry.netol.io -u "$REGISTRY_NETOL_USER" --password-stdin
+          docker tag ${{ env.IMAGE_NAME }}:${IMAGE_TAG} registry.netol.io/${MIRROR_NAME}:${IMAGE_TAG}
+          docker tag ${{ env.IMAGE_NAME }}:${IMAGE_TAG} registry.netol.io/${MIRROR_NAME}:latest
+          docker push registry.netol.io/${MIRROR_NAME}:${IMAGE_TAG}
+          docker push registry.netol.io/${MIRROR_NAME}:latest
+          echo "✅ mirrored to registry.netol.io/${MIRROR_NAME}:${IMAGE_TAG}"
 
       - name: Deploy to Docker Swarm
         env:

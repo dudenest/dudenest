@@ -1,7 +1,7 @@
 version: "3.8"
 services:
   web:
-    image: ghcr.io/dudenest/dudenest:${IMAGE_TAG:-latest}
+    image: registry.netol.io/dudenest/dudenest:${IMAGE_TAG:-latest}  # s332: internal mirror (was ghcr.io) — eliminates ghcr SPOF at Swarm runtime
     networks: [PROXY_NETOL_PROD]
     deploy:
       replicas: 2
@@ -12,7 +12,16 @@ services:
         - traefik.http.routers.dudenest-web.rule=Host(`dudenest.com`) || Host(`app.dudenest.com`)
         - traefik.http.routers.dudenest-web.entrypoints=web
         - traefik.http.services.dudenest-web.loadbalancer.server.port=80
+        - traefik.http.services.dudenest-web.loadbalancer.healthcheck.path=/health  # s332: LB-level health → Traefik omija unhealthy nginx
+        - traefik.http.services.dudenest-web.loadbalancer.healthcheck.interval=30s
+        - traefik.http.services.dudenest-web.loadbalancer.healthcheck.timeout=5s
         - traefik.docker.network=PROXY_NETOL_PROD
+    healthcheck:  # s332: Swarm-level health → rolling update gate + operator visibility
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     logging:
       driver: gelf
       options:
