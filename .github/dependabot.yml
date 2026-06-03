@@ -1,0 +1,19 @@
+# Dependabot config (s333) — automatyczne PRs dla aktualizacji GitHub Actions.
+# Cel: zapobiec regresji typu "Node.js 20 deprecation" (gdy actions z node20 są removed 2026-09-16).
+# Flutter pub dependencies NIE wspierane przez Dependabot — manual update przez `flutter pub upgrade`.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "⬆️ ci"
+    groups:
+      docker-actions:
+        patterns: ["docker/*"]
+      actions-actions:
+        patterns: ["actions/*"]
