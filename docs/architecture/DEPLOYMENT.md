@@ -27,15 +27,15 @@ push → github.com/dudenest/dudenest (main)
     │ Job: deploy (self-hosted, label: netol-swarm)│
     │  Runner: node006.netol.io (Docker Swarm mgr) │
     │  1. docker login ghcr.io ($GITHUB_TOKEN)     │
-    │  2. docker stack deploy dudenest-web         │
+    │  2. docker stack deploy dudenest-app         │
     │     --with-registry-auth (forwarded to nodes)│
-    │  3. docker service ps dudenest-web_web       │
+    │  3. docker service ps dudenest-app_app       │
     │  4. Purge Cloudflare cache (CF_API_TOKEN)    │
     └─────────────────────────────────────────────┘
          │
          ▼
     Docker Swarm (node001-007 + sydney + canada)
-    Service: dudenest-web_web
+    Service: dudenest-app_app
     Image: ghcr.io/dudenest/dudenest:sha
     Network: PROXY_NETOL_PROD
     Replicas: 2 (max 1 per node)
@@ -75,7 +75,7 @@ services:
     deploy:
       replicas: 2
       labels:
-        - traefik.http.routers.dudenest-web.rule=Host(`app.dudenest.com`)
+        - traefik.http.routers.dudenest-app.rule=Host(`app.dudenest.com`)
 ```
 
 ---
@@ -103,7 +103,7 @@ services:
 
 ### HAProxy (ns2, 206.189.31.117)
 - **Domain**: `app.dudenest.com`
-- **Routing**: HAProxy SNI → localhost:12443 → HTTP frontend → Traefik → dudenest-web_web:80
+- **Routing**: HAProxy SNI → localhost:12443 → HTTP frontend → Traefik → dudenest-app_app:80
 
 ### Cloudflare DNS
 - `A app.dudenest.com → 206.189.31.117`
@@ -130,11 +130,11 @@ The Dudenest Relay is deployed to the `relay-poc` VM (reference implementation) 
 ```bash
 # Swarm service state
 ssh root@node001.netol.io \
-  "docker service ps dudenest-web_web --no-trunc"
+  "docker service ps dudenest-app_app --no-trunc"
 
 # Service logs
 ssh root@node001.netol.io \
-  "docker service logs dudenest-web_web --tail 50"
+  "docker service logs dudenest-app_app --tail 50"
 
 # GitHub runner status
 curl -s -H "Authorization: token <PAT>" \

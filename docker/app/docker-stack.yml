@@ -1,0 +1,39 @@
+version: "3.8"
+# s335: rename dudenest-web → dudenest-app.
+# Flutter app (this repo `dudenest/dudenest`) is the main user-facing application.
+# Reserved name "web" for future landing page service.
+# Routing decision C (RENAME-PLAN): app.dudenest.com → Flutter; dudenest.com → 302 redirect (HAProxy ns2).
+services:
+  app:    # s335: service name web → app
+    image: registry.netol.io/dudenest/dudenest:${IMAGE_TAG:-latest}  # s332: internal mirror (was ghcr.io)
+    networks: [PROXY_NETOL_PROD]
+    deploy:
+      replicas: 2
+      update_config: {parallelism: 1, delay: 10s, order: start-first}
+      restart_policy: {condition: any}
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.dudenest-app.rule=Host(`app.dudenest.com`)   # s335: only app subdomain; dudenest.com handled by HAProxy 302 redirect
+        - traefik.http.routers.dudenest-app.entrypoints=web
+        - traefik.http.services.dudenest-app.loadbalancer.server.port=80
+        - traefik.http.services.dudenest-app.loadbalancer.healthcheck.path=/health
+        - traefik.http.services.dudenest-app.loadbalancer.healthcheck.interval=30s
+        - traefik.http.services.dudenest-app.loadbalancer.healthcheck.timeout=5s
+        - traefik.docker.network=PROXY_NETOL_PROD
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://10.51.1.252:12201"
+        tag: "dudenest-app"   # s335: gelf tag rename for Graylog filter rules
+        gelf-compression-type: gzip
+        labels: "com.docker.stack.namespace,com.docker.swarm.service.name"
+
+networks:
+  PROXY_NETOL_PROD:
+    external: true

@@ -92,15 +92,15 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           IMAGE_TAG=$IMAGE_TAG docker stack deploy \
-            --compose-file docker/web/docker-stack.yml \
+            --compose-file docker/app/docker-stack.yml \
             --with-registry-auth \
             --resolve-image always \
-            dudenest-web
+            dudenest-app   # s335: stack name web → app (reserved for landing page)
 
       - name: Verify
         run: |
           sleep 5
-          docker service ps dudenest-web_web --no-trunc | head -10
+          docker service ps dudenest-app_app --no-trunc | head -10
 
       - name: Purge Cloudflare cache
         run: |

@@ -1,6 +1,6 @@
 FROM nginx:alpine
 COPY build/web /usr/share/nginx/html
-COPY docker/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/app/nginx.conf /etc/nginx/conf.d/default.conf
 # Poison pill: overwrites Flutter's service worker with a self-unregistering version.
 # Old browsers that cached the SW will receive this on their next update check,
 # which immediately unregisters the SW, clears all caches, and reloads the tab.
