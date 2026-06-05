@@ -21,7 +21,7 @@ services:
         - traefik.http.services.dudenest-app.loadbalancer.healthcheck.timeout=5s
         - traefik.docker.network=PROXY_NETOL_PROD
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/health"]   # s335 fix: use IPv4 explicitly — wget tries localhost=::1 (IPv6) first, nginx only binds IPv4 → Connection refused
       interval: 30s
       timeout: 5s
       retries: 3
