@@ -72,20 +72,12 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Mirror to registry.netol.io (s332 — eliminates ghcr SPOF at Swarm runtime)
-        env:
-          REGISTRY_NETOL_TOKEN: ${{ secrets.GITLAB_NETOL_IO_TOKEN }}
-          REGISTRY_NETOL_USER: ${{ secrets.GITLAB_NETOL_IO_USER }}
-          MIRROR_NAME: dudenest/dudenest
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker pull ${{ env.IMAGE_NAME }}:${IMAGE_TAG}
-          echo "$REGISTRY_NETOL_TOKEN" | docker login registry.netol.io -u "$REGISTRY_NETOL_USER" --password-stdin
-          docker tag ${{ env.IMAGE_NAME }}:${IMAGE_TAG} registry.netol.io/${MIRROR_NAME}:${IMAGE_TAG}
-          docker tag ${{ env.IMAGE_NAME }}:${IMAGE_TAG} registry.netol.io/${MIRROR_NAME}:latest
-          docker push registry.netol.io/${MIRROR_NAME}:${IMAGE_TAG}
-          docker push registry.netol.io/${MIRROR_NAME}:latest
-          echo "✅ mirrored to registry.netol.io/${MIRROR_NAME}:${IMAGE_TAG}"
+      # s338: removed `Mirror to registry.netol.io` step. The dudenest/dudenest GHCR package is PUBLIC,
+      # so Swarm nodes can pull directly from ghcr.io anonymously (no auth needed). The mirror was
+      # designed for private packages (cf. dudenest-backup which was private pre-s334). For public
+      # packages it adds nothing — and the gitlab.netol.io token lacks write permission to the
+      # dudenest/dudenest mirror namespace anyway. Per-node persistent docker login (s332) handles
+      # the auth case if GHCR ever becomes rate-limited.
 
       - name: Deploy to Docker Swarm
         env:
@@ -104,8 +96,10 @@ jobs:
 
       - name: Purge Cloudflare cache
         run: |
+          # s337: app canonical = dudenest.com (NOT app.dudenest.com). Both hosts still route via Traefik,
+          # but cache purge for canonical host is what matters for end users.
           curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
             -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            --data '{"files":["https://app.dudenest.com/main.dart.js","https://app.dudenest.com/index.html","https://app.dudenest.com/flutter_bootstrap.js","https://app.dudenest.com/flutter.js"]}' \
+            --data '{"files":["https://dudenest.com/main.dart.js","https://dudenest.com/index.html","https://dudenest.com/flutter_bootstrap.js","https://dudenest.com/flutter.js","https://app.dudenest.com/main.dart.js","https://app.dudenest.com/index.html","https://app.dudenest.com/flutter_bootstrap.js","https://app.dudenest.com/flutter.js"]}' \
             | grep -o '"success":[a-z]*'
