@@ -13,7 +13,7 @@ services:
       restart_policy: {condition: any}
       labels:
         - traefik.enable=true
-        - traefik.http.routers.dudenest-app.rule=Host(`app.dudenest.com`)   # s335: only app subdomain; dudenest.com handled by HAProxy 302 redirect
+        - traefik.http.routers.dudenest-app.rule=Host(`dudenest.com`) || Host(`app.dudenest.com`)   # s337 rollback s336 decision C: app MUST live at dudenest.com (canonical). app.dudenest.com kept as alias for users with bookmarks; can drop later.
         - traefik.http.routers.dudenest-app.entrypoints=web
         - traefik.http.services.dudenest-app.loadbalancer.server.port=80
         - traefik.http.services.dudenest-app.loadbalancer.healthcheck.path=/health
