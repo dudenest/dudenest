@@ -3,6 +3,7 @@ name: Build and Deploy
 on:
   push:
     branches: [main, feat/storage-replica]
+  workflow_dispatch:  # s344: manual trigger from Actions UI ("Run workflow" button)
 
 env:
   IMAGE_NAME: ghcr.io/dudenest/dudenest
