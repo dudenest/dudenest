@@ -5,7 +5,7 @@ version: "3.8"
 # Routing decision C (RENAME-PLAN): app.dudenest.com → Flutter; dudenest.com → 302 redirect (HAProxy ns2).
 services:
   app:    # s335: service name web → app
-    image: registry.netol.io/dudenest/dudenest:${IMAGE_TAG:-latest}  # s332: internal mirror (was ghcr.io)
+    image: ghcr.io/dudenest/dudenest:${IMAGE_TAG:-latest}  # s344: revert s332 mirror — s338 removed mirror step in CI, so registry.netol.io tag was stale. GHCR package is PUBLIC, Swarm pulls anonymously. Re-enable mirror after GITLAB_NETOL_IO_TOKEN write perm fix.
     networks: [PROXY_NETOL_PROD]
     deploy:
       replicas: 2
