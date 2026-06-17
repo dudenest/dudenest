@@ -1,6 +1,7 @@
 # Dudenest
 
 [![Version](https://img.shields.io/github/v/release/dudenest/dudenest?color=blue&label=Version)](https://github.com/dudenest/dudenest/releases/latest) [![Release Date](https://img.shields.io/github/release-date/dudenest/dudenest?color=lightgrey&label=Released)](https://github.com/dudenest/dudenest/releases/latest) ![Last Update](https://img.shields.io/badge/Update-2026--05--18-orange) ![Status](https://img.shields.io/badge/Status-Alpha-orange) ![Platform](https://img.shields.io/badge/Platform-Flutter-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![Logging](https://img.shields.io/badge/Logging-Graylog%20GELF-9cf)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdudenest%2Fdudenest.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdudenest%2Fdudenest?ref=badge_shield)
 
 **Your files. Your cloud. Your privacy.**
 
@@ -187,3 +188,6 @@ Apache License 2.0 — see [LICENSE](LICENSE)
 
 **Author**: Dariusz Porczyński
 **Organization**: https://github.com/dudenest
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fdudenest%2Fdudenest.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fdudenest%2Fdudenest?ref=badge_large)
