@@ -373,7 +373,8 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
     try {
       final sid = await widget.relay.startRemoteHand(_selectedProvider);
       final ws = WsClient(widget.relay.baseUrl)..connect();
-      setState(() { _rhWs = ws; _remoteHand = RemoteHand(ws: ws, sessionId: sid); });
+      setState(() { _rhWs = ws; _remoteHand = RemoteHand(ws: ws, sessionId: sid,
+        httpSubmit: widget.relay.sendRemoteHandInput); }); // reliable HTTP input (#3), not lossy ws
     } catch (e) {
       setState(() { _rhError = e.toString(); _step = _AddStep.selectMethod; });
     }

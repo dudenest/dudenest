@@ -128,6 +128,21 @@ class RelayClient {
     return j['session_id'] as String;
   }
 
+  // POST /relay/oauth3/input — send user input to the sidecar via HTTP (reliable
+  // request/response) instead of the lossy WebSocket. Body = same rh_input JSON
+  // the sidecar expects. Returns void on 204.
+  Future<void> sendRemoteHandInput(Map<String, dynamic> msg) async {
+    final resp = await _http.post(
+      Uri.parse('$baseUrl/relay/oauth3/input'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(msg),
+    );
+    if (resp.statusCode != 204) {
+      throw RelayException('POST /relay/oauth3/input: HTTP ${resp.statusCode}',
+          statusCode: resp.statusCode, body: resp.body);
+    }
+  }
+
   // POST /admin/accounts/{id}/refresh-quota — on-demand quota fetch from the cloud
   // provider. Returns the refreshed account.
   Future<Map<String, dynamic>> refreshAdminQuota(int id) async {

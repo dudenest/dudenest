@@ -154,4 +154,50 @@ void main() {
       expect(rh.message, 'demo@example.com');
     });
   });
+
+  group('RemoteHand HTTP input (#3 reliable transport, not lossy ws)', () {
+    void emitPrompt(FakeTransport t) {
+      t.emit({'type': 'rh_hello', 'session_id': 's1', 'relay_pubkey': 'PK'});
+      t.emit({
+        'type': 'rh_prompt',
+        'session_id': 's1',
+        'step': 'sms_code',
+        'title': 'Code',
+        'fields': [
+          {'name': 'code', 'label': 'Code', 'kind': 'code'}
+        ],
+      });
+    }
+
+    test('submit routes via httpSubmit, never the ws, when provided', () async {
+      final t = FakeTransport();
+      Map<String, dynamic>? posted;
+      final rh = RemoteHand(
+          ws: t, sessionId: 's1', httpSubmit: (m) async => posted = m);
+      emitPrompt(t);
+      await pumpEventQueue();
+      rh.submit({'code': '123456'});
+      await pumpEventQueue();
+      expect(posted, isNotNull);
+      expect(posted!['type'], 'rh_input');
+      expect(posted!['values'], {'code': '123456'});
+      expect(t.sent, isEmpty); // ws.send NOT used — HTTP is authoritative
+      expect(rh.status, RhStatus.working);
+    });
+
+    test('httpSubmit failure restores the prompt and asks to retry', () async {
+      final t = FakeTransport();
+      final rh = RemoteHand(
+          ws: t,
+          sessionId: 's1',
+          httpSubmit: (m) async => throw Exception('network down'));
+      emitPrompt(t);
+      await pumpEventQueue();
+      rh.submit({'code': '000000'});
+      await pumpEventQueue(); // let the async catchError run
+      expect(rh.status, RhStatus.needInput); // not stranded on a spinner
+      expect(rh.prompt, isNotNull); // prompt restored so the user can retry
+      expect(rh.message.toLowerCase(), contains('try again'));
+    });
+  });
 }

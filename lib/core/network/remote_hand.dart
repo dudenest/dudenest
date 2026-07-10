@@ -78,9 +78,14 @@ enum RhStatus { connecting, working, needInput, success, error }
 
 /// Drives one method-3 session: consumes rh_* frames, exposes the current prompt,
 /// and seals+sends user input. UI listens via ChangeNotifier.
+/// Optional HTTP submit callback — if set, rh_input goes via HTTP POST
+/// (reliable) instead of ws.send (lossy when ws reconnects). See #3.
+typedef RhHttpSubmit = Future<void> Function(Map<String, dynamic> msg);
+
 class RemoteHand extends ChangeNotifier {
   final RhTransport ws;
   final String sessionId;
+  final RhHttpSubmit? httpSubmit;
 
   String? _pubkey; // relay session pubkey (rh_hello) — seal secrets to this
   RhPrompt? _prompt;
@@ -92,7 +97,7 @@ class RemoteHand extends ChangeNotifier {
   String get message => _message;
   bool get ready => _pubkey != null;
 
-  RemoteHand({required this.ws, required this.sessionId}) {
+  RemoteHand({required this.ws, required this.sessionId, this.httpSubmit}) {
     ws.raw.listen(_onFrame);
   }
 
@@ -152,9 +157,21 @@ class RemoteHand extends ChangeNotifier {
     if (sensitive.isNotEmpty && _pubkey != null) {
       msg['sealed'] = sealJsonToPubkey(_pubkey!, sensitive);
     }
-    ws.send(msg);
     _status = RhStatus.working;
     _prompt = null; // consumed; next prompt (or terminal state) will arrive
     notifyListeners();
+    // Prefer HTTP POST (reliable) over ws.send (lossy when ws reconnects — #3).
+    if (httpSubmit != null) {
+      httpSubmit!(msg).catchError((Object e) {
+        // Delivery failed — the sidecar never got this input, so don't strand the
+        // user on a spinner: restore the prompt and surface the error to retry.
+        _prompt = p;
+        _status = RhStatus.needInput;
+        _message = 'Could not send — check your connection and try again';
+        notifyListeners();
+      });
+    } else {
+      ws.send(msg);
+    }
   }
 }
