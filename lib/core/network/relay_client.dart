@@ -114,6 +114,20 @@ class RelayClient {
         as Map<String, dynamic>;
   }
 
+  // POST /relay/oauth3/start — begin a method-3 (Relay-assisted) login session.
+  // The relay builds the provider's OAuth URL server-side, arms token capture, and
+  // spawns a CDP-free sidecar driving a vanilla Chromium. Returns the session_id
+  // used to correlate the ws rh_* frames (RemoteHand controller).
+  Future<String> startRemoteHand(String provider) async {
+    final resp = await _http.post(
+      Uri.parse('$baseUrl/relay/oauth3/start'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({'provider': provider}),
+    );
+    final j = _processResponse(resp, 'POST /relay/oauth3/start') as Map<String, dynamic>;
+    return j['session_id'] as String;
+  }
+
   // POST /admin/accounts/{id}/refresh-quota — on-demand quota fetch from the cloud
   // provider. Returns the refreshed account.
   Future<Map<String, dynamic>> refreshAdminQuota(int id) async {
