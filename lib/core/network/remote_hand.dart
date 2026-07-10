@@ -110,6 +110,14 @@ class RemoteHand extends ChangeNotifier {
         _message = j['message'] as String? ?? '';
         notifyListeners();
         break;
+      case 'auth_done':
+        // Server-side OAuth token capture succeeded (relay callback). The sidecar
+        // can't see a 'success' page (Google redirects to the callback), so the
+        // authoritative success signal is auth_done — clear the spinner on it.
+        _status = RhStatus.success;
+        _message = j['email'] as String? ?? '';
+        notifyListeners();
+        break;
     }
   }
 

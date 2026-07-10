@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/network/remote_hand.dart';
+import '../../core/network/rh_validate.dart';
 
 class RemoteHandForm extends StatefulWidget {
   final RemoteHand controller;
@@ -86,7 +87,7 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
           for (final f in p.fields) _fieldWidget(f),
           const SizedBox(height: 20),
           FilledButton(
-            onPressed: ready ? () => _submit(p) : null,
+            onPressed: (ready && _allValid(p)) ? () => _submit(p) : null,
             child: const Text('Continue'),
           ),
           if (!ready)
@@ -100,19 +101,29 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
     );
   }
 
+  // All visible fields pass client-side format validation → Continue enabled.
+  bool _allValid(RhPrompt p) => p.fields
+      .where((f) => f.kind != 'captcha_image')
+      .every((f) => validateRhField(f.kind, _ctrlFor(f).text) == null);
+
   Widget _fieldWidget(RhField f) {
     if (f.kind == 'captcha_image') return const SizedBox.shrink(); // image already shown above
+    final text = _ctrlFor(f).text;
+    // Show the format error only once the user has typed (don't shout 'Required' on an empty field).
+    final error = text.isEmpty ? null : validateRhField(f.kind, text);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: _ctrlFor(f),
         obscureText: f.obscure,
+        onChanged: (_) => setState(() {}), // re-validate + re-gate Continue
         keyboardType: f.kind == 'tel'
             ? TextInputType.phone
             : (f.kind == 'code' ? TextInputType.number : TextInputType.text),
         decoration: InputDecoration(
           labelText: f.label,
           helperText: f.hint.isEmpty ? null : f.hint,
+          errorText: error,
           border: const OutlineInputBorder(),
           suffixIcon: f.sensitive ? const Icon(Icons.lock, size: 18) : null,
         ),
