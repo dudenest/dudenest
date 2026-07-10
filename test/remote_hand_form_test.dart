@@ -17,11 +17,13 @@ class FakeTransport implements RhTransport {
 }
 
 void main() {
-  testWidgets('renders prompt fields, enables Continue once ready, submits input',
+  testWidgets(
+      'renders prompt fields, enables Continue once ready, submits input',
       (tester) async {
     final t = FakeTransport();
     final rh = RemoteHand(ws: t, sessionId: 's1');
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
 
     // connecting → spinner, no fields yet
     expect(find.byType(TextField), findsNothing);
@@ -29,7 +31,10 @@ void main() {
     // relay greets + asks for a (non-sensitive) login field
     t.emit({'type': 'rh_hello', 'session_id': 's1', 'relay_pubkey': 'PK'});
     t.emit({
-      'type': 'rh_prompt', 'session_id': 's1', 'step': 'email', 'title': 'Sign in',
+      'type': 'rh_prompt',
+      'session_id': 's1',
+      'step': 'email',
+      'title': 'Sign in',
       'fields': [
         {'name': 'login', 'label': 'Email or phone', 'kind': 'text'}
       ],
@@ -37,7 +42,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Sign in'), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'Email or phone'), findsOneWidget); // label rendered
+    expect(find.widgetWithText(TextField, 'Email or phone'),
+        findsOneWidget); // label rendered
     expect(find.byType(TextField), findsOneWidget);
 
     // Invalid format → Continue stays disabled, no send
@@ -60,8 +66,14 @@ void main() {
   testWidgets('shows success banner on rh_state success', (tester) async {
     final t = FakeTransport();
     final rh = RemoteHand(ws: t, sessionId: 's1');
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
-    t.emit({'type': 'rh_state', 'session_id': 's1', 'state': 'success', 'message': 'demo@example.com'});
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
+    t.emit({
+      'type': 'rh_state',
+      'session_id': 's1',
+      'state': 'success',
+      'message': 'demo@example.com'
+    });
     await tester.pump();
     expect(find.text('Account connected'), findsOneWidget);
   });
@@ -69,13 +81,17 @@ void main() {
   testWidgets('shows captcha image when prompt carries one', (tester) async {
     final t = FakeTransport();
     final rh = RemoteHand(ws: t, sessionId: 's1');
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
     t.emit({'type': 'rh_hello', 'session_id': 's1', 'relay_pubkey': 'PK'});
     // 1x1 transparent PNG
     const png =
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
     t.emit({
-      'type': 'rh_prompt', 'session_id': 's1', 'step': 'captcha_static', 'title': 'Solve',
+      'type': 'rh_prompt',
+      'session_id': 's1',
+      'step': 'captcha_static',
+      'title': 'Solve',
       'image': png,
       'fields': [
         {'name': 'captcha', 'label': 'Type', 'kind': 'captcha_image'}
@@ -83,5 +99,35 @@ void main() {
     });
     await tester.pump();
     expect(find.byType(Image), findsOneWidget);
+  });
+
+  testWidgets('blocks spaces in login and password fields', (tester) async {
+    final t = FakeTransport();
+    final rh = RemoteHand(ws: t, sessionId: 's1');
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
+    t.emit({'type': 'rh_hello', 'session_id': 's1', 'relay_pubkey': 'PK'});
+    t.emit({
+      'type': 'rh_prompt',
+      'session_id': 's1',
+      'step': 'credentials',
+      'title': 'Sign in',
+      'fields': [
+        {'name': 'login', 'label': 'Email', 'kind': 'text'},
+        {
+          'name': 'password',
+          'label': 'Password',
+          'kind': 'password',
+          'sensitive': true
+        },
+      ],
+    });
+    await tester.pump();
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'demo @example.com');
+    await tester.enterText(fields.at(1), 'pass word');
+    await tester.pump();
+    expect(find.text('demo@example.com'), findsOneWidget);
+    expect(find.text('password'), findsOneWidget);
   });
 }

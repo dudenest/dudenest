@@ -6,6 +6,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/network/remote_hand.dart';
 import '../../core/network/rh_validate.dart';
@@ -29,14 +30,15 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
     super.dispose();
   }
 
-  TextEditingController _ctrlFor(RhField f) =>
-      _fieldCtrls.putIfAbsent(f.name, () => TextEditingController(text: f.value));
+  TextEditingController _ctrlFor(RhField f) => _fieldCtrls.putIfAbsent(
+      f.name, () => TextEditingController(text: f.value));
 
   void _submit(RhPrompt prompt) {
     final values = {for (final f in prompt.fields) f.name: _ctrlFor(f).text};
     widget.controller.submit(values);
     for (final f in prompt.fields) {
-      if (f.sensitive) _ctrlFor(f).clear(); // don't retain secrets in the widget
+      if (f.sensitive)
+        _ctrlFor(f).clear(); // don't retain secrets in the widget
     }
   }
 
@@ -48,15 +50,20 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
         final c = widget.controller;
         switch (c.status) {
           case RhStatus.success:
-            return _banner(Icons.check_circle, Colors.green, 'Account connected', c.message);
+            return _banner(Icons.check_circle, Colors.green,
+                'Account connected', c.message);
           case RhStatus.error:
-            return _banner(Icons.error, Colors.red, 'Could not sign in', c.message);
+            return _banner(
+                Icons.error, Colors.red, 'Could not sign in', c.message);
           case RhStatus.working:
           case RhStatus.connecting:
             return const Padding(
               padding: EdgeInsets.all(24),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
                 SizedBox(width: 12),
                 Text('Working…'),
               ]),
@@ -77,7 +84,9 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(p.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+          Text(p.title,
+              style:
+                  const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
           const SizedBox(height: 16),
           if (p.imageB64 != null) ...[
             // §8.1: tightly-cropped challenge — fills the view, not a speck on empty space
@@ -107,7 +116,8 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
       .every((f) => validateRhField(f.kind, _ctrlFor(f).text) == null);
 
   Widget _fieldWidget(RhField f) {
-    if (f.kind == 'captcha_image') return const SizedBox.shrink(); // image already shown above
+    if (f.kind == 'captcha_image')
+      return const SizedBox.shrink(); // image already shown above
     final text = _ctrlFor(f).text;
     // Show the format error only once the user has typed (don't shout 'Required' on an empty field).
     final error = text.isEmpty ? null : validateRhField(f.kind, text);
@@ -116,6 +126,7 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
       child: TextField(
         controller: _ctrlFor(f),
         obscureText: f.obscure,
+        inputFormatters: _inputFormattersFor(f),
         onChanged: (_) => setState(() {}), // re-validate + re-gate Continue
         keyboardType: f.kind == 'tel'
             ? TextInputType.phone
@@ -131,16 +142,27 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
     );
   }
 
-  Widget _banner(IconData icon, Color color, String title, String msg) => Padding(
+  List<TextInputFormatter>? _inputFormattersFor(RhField f) {
+    if (f.kind == 'password' || f.kind == 'text')
+      return [FilteringTextInputFormatter.deny(RegExp(r'\s'))];
+    return null;
+  }
+
+  Widget _banner(IconData icon, Color color, String title, String msg) =>
+      Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, color: color, size: 40),
           const SizedBox(height: 12),
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           if (msg.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text(msg, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
+              child: Text(msg,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey)),
             ),
         ]),
       );

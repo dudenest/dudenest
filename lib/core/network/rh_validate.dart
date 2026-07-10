@@ -8,49 +8,63 @@
 /// Returns an error message for [value] under field [kind], or null if valid.
 /// [kind]: text (login = email or phone) | password | tel | code | captcha_image.
 String? validateRhField(String kind, String value) {
-  // Passwords may contain leading/trailing spaces and any characters — never trim.
   if (kind == 'password') {
-    return value.isEmpty ? 'Enter your password' : null;
+    if (value.isEmpty) return 'Enter your password';
+    return RegExp(r'\s').hasMatch(value) ? 'No spaces allowed' : null;
   }
+  if (value.isEmpty) return 'Required';
   final v = value.trim();
-  if (v.isEmpty) return 'Required';
   switch (kind) {
     case 'tel':
       return _validatePhone(v);
     case 'code':
       return _validateCode(v);
     case 'text': // Google login accepts an email OR a phone
-      final looksPhone = RegExp(r'^\+?[\d\s\-()]+$').hasMatch(v) && !v.contains('@');
-      return looksPhone ? _validatePhone(v) : validateEmail(v);
+      final looksPhone =
+          RegExp(r'^\+?[\d\s\-()]+$').hasMatch(v) && !v.contains('@');
+      return looksPhone ? _validatePhone(v) : validateEmail(value);
     default:
       return null; // captcha_image etc. — only non-empty (checked above)
   }
 }
 
 /// Email format per the fields the user flagged: single @, starts with a letter,
-/// no spaces, allowed chars, domain with a dot.
+/// no whitespace, allowed chars, domain with a dot, TLD without digits.
 String? validateEmail(String v) {
-  if (v.contains(' ')) return 'No spaces allowed';
+  if (RegExp(r'\s').hasMatch(v)) return 'No spaces allowed';
   final at = v.indexOf('@');
-  if (at <= 0 || v.indexOf('@', at + 1) != -1) return 'Enter a valid email (one @)';
+  if (at <= 0 || v.indexOf('@', at + 1) != -1)
+    return 'Enter a valid email (one @)';
   final local = v.substring(0, at);
   final domain = v.substring(at + 1);
-  if (!RegExp(r'^[A-Za-z]').hasMatch(local)) return 'Email must start with a letter';
-  if (!RegExp(r'^[A-Za-z0-9._%+\-]+$').hasMatch(local)) return 'Invalid characters in email';
-  if (domain.isEmpty || !domain.contains('.')) return 'Email domain must include a dot';
-  if (!RegExp(r'^[A-Za-z0-9.\-]+$').hasMatch(domain)) return 'Invalid characters in domain';
-  if (domain.startsWith('.') || domain.endsWith('.') || domain.startsWith('-') || domain.endsWith('-')) {
+  if (!RegExp(r'^[A-Za-z]').hasMatch(local))
+    return 'Email must start with a letter';
+  if (!RegExp(r'^[A-Za-z0-9._%+\-]+$').hasMatch(local))
+    return 'Invalid characters in email';
+  if (domain.isEmpty || !domain.contains('.'))
+    return 'Email domain must include a dot';
+  if (!RegExp(r'^[A-Za-z0-9.\-]+$').hasMatch(domain))
+    return 'Invalid characters in domain';
+  if (domain.startsWith('.') ||
+      domain.endsWith('.') ||
+      domain.startsWith('-') ||
+      domain.endsWith('-')) {
     return 'Invalid domain';
   }
   if (domain.contains('..')) return 'Invalid domain';
+  final tld = domain.split('.').last;
+  if (tld.isEmpty || RegExp(r'\d').hasMatch(tld))
+    return 'Domain extension cannot contain digits';
   return null;
 }
 
 String? _validatePhone(String v) {
   final digits = v.replaceAll(RegExp(r'[\s\-()]'), '');
-  if (!RegExp(r'^\+?\d+$').hasMatch(digits)) return 'Digits only (with country code, e.g. +48…)';
+  if (!RegExp(r'^\+?\d+$').hasMatch(digits))
+    return 'Digits only (with country code, e.g. +48…)';
   final bare = digits.startsWith('+') ? digits.substring(1) : digits;
-  if (bare.length < 7 || bare.length > 15) return 'Enter a valid phone number with country code';
+  if (bare.length < 7 || bare.length > 15)
+    return 'Enter a valid phone number with country code';
   return null;
 }
 
