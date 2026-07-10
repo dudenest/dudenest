@@ -5,6 +5,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'remote_hand.dart' show RhTransport; // WsClient satisfies RemoteHand's transport contract
+
 /// Message types sent by relay via WebSocket.
 enum WsMessageType { authRequest, authDone, authError, ping, unknown }
 
@@ -29,17 +31,27 @@ class WsMessage {
 }
 
 /// Persistent WebSocket connection to relay with auto-reconnect.
-class WsClient {
+class WsClient implements RhTransport {
   final String baseUrl; // e.g. "https://relay.dudenest.com" or "http://10.71.0.1:8086"
   WebSocketChannel? _channel;
   final _ctrl = StreamController<WsMessage>.broadcast();
+  final _raw = StreamController<Map<String, dynamic>>.broadcast();
   bool _disposed = false;
   Duration _retryDelay = const Duration(seconds: 3);
 
   WsClient(this.baseUrl);
 
-  /// Stream of messages received from relay.
+  /// Stream of typed auth_* messages received from relay.
   Stream<WsMessage> get messages => _ctrl.stream;
+
+  /// Stream of raw decoded JSON frames — used by Remote-Hand (method 3) whose
+  /// rh_* messages carry dynamic form schemas the typed enum doesn't model.
+  @override
+  Stream<Map<String, dynamic>> get raw => _raw.stream;
+
+  /// Sends a JSON frame to the relay (e.g. Remote-Hand rh_input).
+  @override
+  void send(Map<String, dynamic> msg) => _channel?.sink.add(jsonEncode(msg));
 
   /// Opens the WebSocket connection. Auto-reconnects on disconnect.
   void connect() {
@@ -52,8 +64,9 @@ class WsClient {
         (data) {
           if (_disposed) return;
           try {
-            final msg = WsMessage.fromJson(jsonDecode(data as String) as Map<String, dynamic>);
-            _ctrl.add(msg);
+            final json = jsonDecode(data as String) as Map<String, dynamic>;
+            _raw.add(json);                       // Remote-Hand consumes rh_* here
+            _ctrl.add(WsMessage.fromJson(json));  // typed auth_* stream
           } catch (_) {} // ignore malformed messages
         },
         onDone: () { if (!_disposed) Future.delayed(_retryDelay, connect); },
@@ -71,5 +84,6 @@ class WsClient {
     _disposed = true;
     _channel?.sink.close();
     _ctrl.close();
+    _raw.close();
   }
 }

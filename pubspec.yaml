@@ -16,6 +16,7 @@ dependencies:
   flutter_web_auth_2: ^4.0.0   # OAuth in system browser (user's IP ✅) — Android/iOS/macOS/Desktop
   webview_flutter: ^4.0.0      # In-app WebView with JS auto-fill (Method E) — Android/iOS/macOS/Desktop only
   web_socket_channel: ^3.0.0   # WebSocket client for relay↔Flutter communication
+  pinenacl: ^0.6.0             # NaCl sealed_box — E2E-seal method-3 credentials to relay session pubkey (§10.1)
   url_launcher: ^6.3.0         # Open URLs in system browser (fallback / web platform)
   # font_awesome_flutter REMOVED 2026-05-19 — every 10.x release extends final `IconData`, which
   # strict Dart 3 (Flutter ≥ 3.28) rejects with "can't be extended outside its library". Brand

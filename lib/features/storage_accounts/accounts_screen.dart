@@ -7,7 +7,10 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/network/relay_client.dart';
+import '../../core/network/remote_hand.dart';
+import '../../core/network/ws_client.dart';
 import '../../core/oauth/oauth_service.dart';
+import 'remote_hand_form.dart';
 import 'storage_visualizer.dart';
 
 class AccountsScreen extends StatefulWidget {
@@ -311,8 +314,8 @@ class _ErrorDisplay extends StatelessWidget {
 
 // ─── Add Account Sheet ────────────────────────────────────────────────────────
 
-enum _AddStep { selectProvider, selectMethod, oauthFlow, browserFlow, webviewCredentials, webviewFlow, done }
-enum _AuthMethod { flutterOAuth, browserAuth, webviewOAuth }
+enum _AddStep { selectProvider, selectMethod, oauthFlow, browserFlow, webviewCredentials, webviewFlow, relayHandFlow, done }
+enum _AuthMethod { flutterOAuth, browserAuth, webviewOAuth, relayAssisted }
 
 class _AddAccountSheet extends StatefulWidget {
   final RelayClient relay;
@@ -352,10 +355,41 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
   bool _webviewBusy = false;
   String? _webviewError;
 
+  // Relay-assisted (Method 3) state — CDP-free mediated login via dynamic form
+  RemoteHand? _remoteHand;
+  WsClient? _rhWs;
+  String? _rhError;
+
   @override
   void initState() { super.initState(); _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true); _pulseAnim = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut)); }
   @override
-  void dispose() { _pulseCtrl.dispose(); _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); _pollTimer?.cancel(); super.dispose(); }
+  void dispose() { _pulseCtrl.dispose(); _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); _pollTimer?.cancel(); _remoteHand?.dispose(); _rhWs?.dispose(); super.dispose(); }
+
+  // ── Method 3: Relay-assisted (CDP-free mediated login via dynamic form) ──
+  // POSTs /relay/oauth3/start {provider}; the relay builds the OAuth URL, arms
+  // token capture, and spawns the sidecar. We open the ws and let RemoteHand drive.
+  Future<void> _startRemoteHand() async {
+    setState(() { _rhError = null; });
+    try {
+      final sid = await widget.relay.startRemoteHand(_selectedProvider);
+      final ws = WsClient(widget.relay.baseUrl)..connect();
+      setState(() { _rhWs = ws; _remoteHand = RemoteHand(ws: ws, sessionId: sid); });
+    } catch (e) {
+      setState(() { _rhError = e.toString(); _step = _AddStep.selectMethod; });
+    }
+  }
+
+  Widget _buildRemoteHandFlow(ScrollController sc) {
+    if (_rhError != null) {
+      return Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.error, color: Colors.red, size: 40), const SizedBox(height: 12),
+        Text('Could not start: $_rhError', textAlign: TextAlign.center),
+      ]));
+    }
+    final rh = _remoteHand;
+    if (rh == null) return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+    return ListView(controller: sc, children: [RemoteHandForm(controller: rh)]);
+  }
 
   // ── Method A: Flutter-side OAuth (user's IP ✅) ──
 
@@ -501,6 +535,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
           _AddStep.browserFlow         => _buildBrowserFlow(scrollCtrl),
           _AddStep.webviewCredentials  => _buildWebViewCredentials(scrollCtrl),
           _AddStep.webviewFlow         => _buildWebViewFlow(),
+          _AddStep.relayHandFlow       => _buildRemoteHandFlow(scrollCtrl),
           _AddStep.done                => _buildDone(),
         },
       ),
@@ -581,6 +616,18 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
           subtitle: const Text('Self-hosted relay only · Uses relay\'s IP'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => setState(() { _method = _AuthMethod.browserAuth; _step = _AddStep.browserFlow; _startBrowserSession(); }),
+        ),
+      ),
+      const SizedBox(height: 12),
+      // Method 3 — Relay-assisted: native dynamic form, relay drives a vanilla
+      // (undetectable) Chromium under the hood. Credentials are sealed to the relay.
+      Card(
+        child: ListTile(
+          leading: const CircleAvatar(backgroundColor: Colors.deepPurple, child: Icon(Icons.pan_tool_alt, color: Colors.white)),
+          title: const Text('Relay assisted'),
+          subtitle: const Text('Type here · relay logs you in · encrypted · handles 2FA & captcha'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => setState(() { _method = _AuthMethod.relayAssisted; _step = _AddStep.relayHandFlow; _startRemoteHand(); }),
         ),
       ),
       const SizedBox(height: 12),
