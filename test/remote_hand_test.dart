@@ -106,5 +106,17 @@ void main() {
       expect(rh.status, RhStatus.error);
       expect(rh.message, 'Wrong password');
     });
+
+    test('server-side auth_done clears the spinner (success)', () async {
+      final t = FakeTransport();
+      final rh = RemoteHand(ws: t, sessionId: 's1');
+      t.emit({'type': 'rh_state', 'session_id': 's1', 'state': 'working'});
+      await pumpEventQueue();
+      expect(rh.status, RhStatus.working);
+      t.emit({'type': 'auth_done', 'provider': 'gdrive', 'email': 'demo@example.com'});
+      await pumpEventQueue();
+      expect(rh.status, RhStatus.success);
+      expect(rh.message, 'demo@example.com');
+    });
   });
 }

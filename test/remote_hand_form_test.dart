@@ -40,10 +40,18 @@ void main() {
     expect(find.widgetWithText(TextField, 'Email or phone'), findsOneWidget); // label rendered
     expect(find.byType(TextField), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField), 'demo@example.com');
+    // Invalid format → Continue stays disabled, no send
+    await tester.enterText(find.byType(TextField), 'not-an-email');
+    await tester.pump();
     await tester.tap(find.text('Continue'));
     await tester.pump();
+    expect(t.sent, isEmpty);
 
+    // Valid → Continue enabled, sends
+    await tester.enterText(find.byType(TextField), 'demo@example.com');
+    await tester.pump();
+    await tester.tap(find.text('Continue'));
+    await tester.pump();
     expect(t.sent, hasLength(1));
     expect(t.sent.single['type'], 'rh_input');
     expect(t.sent.single['values'], {'login': 'demo@example.com'});
