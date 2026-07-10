@@ -130,4 +130,26 @@ void main() {
     expect(find.text('demo@example.com'), findsOneWidget);
     expect(find.text('password'), findsOneWidget);
   });
+
+  testWidgets('renders Google warning prompts in red', (tester) async {
+    final t = FakeTransport();
+    final rh = RemoteHand(ws: t, sessionId: 's1');
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
+    t.emit({'type': 'rh_hello', 'session_id': 's1', 'relay_pubkey': 'PK'});
+    t.emit({
+      'type': 'rh_prompt',
+      'session_id': 's1',
+      'step': 'email',
+      'title': "Couldn't find that account — check the email",
+      'level': 'warning',
+      'fields': [
+        {'name': 'login', 'label': 'Email', 'kind': 'text'},
+      ],
+    });
+    await tester.pump();
+    final text = tester.widget<Text>(
+        find.text("Couldn't find that account — check the email"));
+    expect(text.style?.color, Colors.red);
+  });
 }

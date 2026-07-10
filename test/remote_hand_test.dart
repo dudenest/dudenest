@@ -20,11 +20,17 @@ class FakeTransport implements RhTransport {
 void main() {
   group('models', () {
     test('RhField parse + obscure', () {
-      final f = RhField.fromJson({'name': 'password', 'label': 'Password', 'kind': 'password', 'sensitive': true});
+      final f = RhField.fromJson({
+        'name': 'password',
+        'label': 'Password',
+        'kind': 'password',
+        'sensitive': true
+      });
       expect(f.name, 'password');
       expect(f.sensitive, isTrue);
       expect(f.obscure, isTrue);
-      expect(RhField.fromJson({'name': 'login', 'label': 'Login'}).obscure, isFalse);
+      expect(RhField.fromJson({'name': 'login', 'label': 'Login'}).obscure,
+          isFalse);
     });
 
     test('RhPrompt parse with fields + captcha image', () {
@@ -39,6 +45,13 @@ void main() {
       expect(p.step, 'captcha_static');
       expect(p.imageB64, 'QUJD');
       expect(p.fields.single.name, 'captcha');
+      expect(p.level, 'info');
+    });
+
+    test('RhPrompt warning level', () {
+      final p = RhPrompt.fromJson(
+          {'step': 'email', 'title': 'Wrong', 'level': 'warning'});
+      expect(p.isWarning, isTrue);
     });
   });
 
@@ -66,11 +79,17 @@ void main() {
       expect(rh.ready, isTrue);
     });
 
-    test('rh_prompt exposes fields; submit seals secrets, keeps plain in cleartext', () async {
+    test(
+        'rh_prompt exposes fields; submit seals secrets, keeps plain in cleartext',
+        () async {
       final sk = PrivateKey.generate();
       final t = FakeTransport();
       final rh = RemoteHand(ws: t, sessionId: 's1');
-      t.emit({'type': 'rh_hello', 'session_id': 's1', 'relay_pubkey': base64.encode(sk.publicKey)});
+      t.emit({
+        'type': 'rh_hello',
+        'session_id': 's1',
+        'relay_pubkey': base64.encode(sk.publicKey)
+      });
       t.emit({
         'type': 'rh_prompt',
         'session_id': 's1',
@@ -78,7 +97,12 @@ void main() {
         'title': 'Sign in',
         'fields': [
           {'name': 'login', 'label': 'Login', 'kind': 'text'},
-          {'name': 'password', 'label': 'Password', 'kind': 'password', 'sensitive': true},
+          {
+            'name': 'password',
+            'label': 'Password',
+            'kind': 'password',
+            'sensitive': true
+          },
         ],
       });
       await pumpEventQueue();
@@ -91,9 +115,11 @@ void main() {
       expect(msg['type'], 'rh_input');
       expect(msg['session_id'], 's1');
       expect(msg['values'], {'login': 'demo@example.com'}); // login plaintext
-      expect((msg['values'] as Map).containsKey('password'), isFalse); // never plaintext
+      expect((msg['values'] as Map).containsKey('password'),
+          isFalse); // never plaintext
       // sealed opens to the secret only
-      final opened = SealedBox(sk).decrypt(base64.decode(msg['sealed'] as String));
+      final opened =
+          SealedBox(sk).decrypt(base64.decode(msg['sealed'] as String));
       expect(jsonDecode(utf8.decode(opened)), {'password': 'S3cret'});
       expect(rh.status, RhStatus.working);
     });
@@ -101,7 +127,12 @@ void main() {
     test('rh_state success/error update status+message', () async {
       final t = FakeTransport();
       final rh = RemoteHand(ws: t, sessionId: 's1');
-      t.emit({'type': 'rh_state', 'session_id': 's1', 'state': 'error', 'message': 'Wrong password'});
+      t.emit({
+        'type': 'rh_state',
+        'session_id': 's1',
+        'state': 'error',
+        'message': 'Wrong password'
+      });
       await pumpEventQueue();
       expect(rh.status, RhStatus.error);
       expect(rh.message, 'Wrong password');
@@ -113,7 +144,11 @@ void main() {
       t.emit({'type': 'rh_state', 'session_id': 's1', 'state': 'working'});
       await pumpEventQueue();
       expect(rh.status, RhStatus.working);
-      t.emit({'type': 'auth_done', 'provider': 'gdrive', 'email': 'demo@example.com'});
+      t.emit({
+        'type': 'auth_done',
+        'provider': 'gdrive',
+        'email': 'demo@example.com'
+      });
       await pumpEventQueue();
       expect(rh.status, RhStatus.success);
       expect(rh.message, 'demo@example.com');

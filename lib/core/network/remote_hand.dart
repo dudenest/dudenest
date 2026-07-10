@@ -52,8 +52,14 @@ class RhPrompt {
   final String title;
   final List<RhField> fields;
   final String? imageB64;
+  final String level;
 
-  const RhPrompt({required this.step, required this.title, required this.fields, this.imageB64});
+  const RhPrompt(
+      {required this.step,
+      required this.title,
+      required this.fields,
+      this.imageB64,
+      this.level = 'info'});
 
   factory RhPrompt.fromJson(Map<String, dynamic> j) => RhPrompt(
         step: j['step'] as String? ?? '',
@@ -62,7 +68,10 @@ class RhPrompt {
             .map((f) => RhField.fromJson(f as Map<String, dynamic>))
             .toList(),
         imageB64: j['image'] as String?,
+        level: j['level'] as String? ?? 'info',
       );
+
+  bool get isWarning => level == 'warning';
 }
 
 enum RhStatus { connecting, working, needInput, success, error }
@@ -88,7 +97,8 @@ class RemoteHand extends ChangeNotifier {
   }
 
   void _onFrame(Map<String, dynamic> j) {
-    if ((j['session_id'] as String?) != null && j['session_id'] != sessionId) return; // not ours
+    if ((j['session_id'] as String?) != null && j['session_id'] != sessionId)
+      return; // not ours
     switch (j['type'] as String? ?? '') {
       case 'rh_hello':
         _pubkey = j['relay_pubkey'] as String?;

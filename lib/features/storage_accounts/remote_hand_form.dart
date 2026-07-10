@@ -85,8 +85,10 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(p.title,
-              style:
-                  const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: p.isWarning ? Colors.red : null)),
           const SizedBox(height: 16),
           if (p.imageB64 != null) ...[
             // §8.1: tightly-cropped challenge — fills the view, not a speck on empty space
