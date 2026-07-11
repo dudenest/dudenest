@@ -152,4 +152,26 @@ void main() {
         find.text("Couldn't find that account — check the email"));
     expect(text.style?.color, Colors.red);
   });
+
+  testWidgets('renders send-code confirmation without phone field', (tester) async {
+    final t = FakeTransport();
+    final rh = RemoteHand(ws: t, sessionId: 's1');
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
+    t.emit({'type': 'rh_hello', 'session_id': 's1', 'relay_pubkey': 'PK'});
+    t.emit({
+      'type': 'rh_prompt',
+      'session_id': 's1',
+      'step': 'send_code',
+      'title': 'Google will send a verification code to your phone',
+      'fields': [],
+    });
+    await tester.pump();
+    expect(find.text('Google will send a verification code to your phone'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.text('Continue'));
+    await tester.pump();
+    expect(t.sent.single['step'], 'send_code');
+    expect(t.sent.single['values'], <String, String>{});
+  });
 }
