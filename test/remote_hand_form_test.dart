@@ -80,6 +80,37 @@ void main() {
     expect(find.text('Account connected'), findsOneWidget);
   });
 
+  testWidgets('success shows account email + Add Next / Finish buttons', (tester) async {
+    final t = FakeTransport();
+    final rh = RemoteHand(ws: t, sessionId: 's1');
+    var addNext = 0, finish = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: RemoteHandForm(
+                controller: rh,
+                onAddNext: () => addNext++,
+                onFinish: () => finish++))));
+    t.emit({'type': 'auth_done', 'provider': 'gdrive', 'email': 'demo@example.com'});
+    await tester.pump();
+    expect(find.text('Account connected'), findsOneWidget);
+    expect(find.text('demo@example.com'), findsOneWidget); // shows which account
+    await tester.tap(find.text('Add Next Account'));
+    await tester.tap(find.text('Finish'));
+    expect(addNext, 1);
+    expect(finish, 1);
+  });
+
+  testWidgets('working shows an indeterminate progress bar', (tester) async {
+    final t = FakeTransport();
+    final rh = RemoteHand(ws: t, sessionId: 's1');
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
+    t.emit({'type': 'rh_state', 'session_id': 's1', 'state': 'working', 'message': 'submitting email'});
+    await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.text('submitting email'), findsOneWidget);
+  });
+
   testWidgets('shows captcha image when prompt carries one', (tester) async {
     final t = FakeTransport();
     final rh = RemoteHand(ws: t, sessionId: 's1');

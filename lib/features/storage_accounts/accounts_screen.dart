@@ -389,7 +389,20 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
     }
     final rh = _remoteHand;
     if (rh == null) return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
-    return ListView(controller: sc, children: [RemoteHandForm(controller: rh)]);
+    return ListView(controller: sc, children: [RemoteHandForm(
+      controller: rh,
+      onAddNext: _restartRemoteHand,               // fresh relay session for the next account
+      onFinish: () => Navigator.of(context).pop(),  // close sheet → parent reloads accounts
+    )]);
+  }
+
+  // Restart the relay-assisted flow for another account: tear down the finished session's
+  // controller/ws and begin a new /start (a new sidecar) — the display was freed on success.
+  void _restartRemoteHand() {
+    _remoteHand?.dispose();
+    _rhWs?.dispose();
+    setState(() { _remoteHand = null; _rhWs = null; _rhError = null; });
+    _startRemoteHand();
   }
 
   // ── Method A: Flutter-side OAuth (user's IP ✅) ──

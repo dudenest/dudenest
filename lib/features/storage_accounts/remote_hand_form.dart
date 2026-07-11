@@ -13,7 +13,10 @@ import '../../core/network/rh_validate.dart';
 
 class RemoteHandForm extends StatefulWidget {
   final RemoteHand controller;
-  const RemoteHandForm({super.key, required this.controller});
+  final VoidCallback? onAddNext; // success → start another account (fresh relay session)
+  final VoidCallback? onFinish; // success → close and return to the accounts list
+  const RemoteHandForm(
+      {super.key, required this.controller, this.onAddNext, this.onFinish});
 
   @override
   State<RemoteHandForm> createState() => _RemoteHandFormState();
@@ -50,24 +53,13 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
         final c = widget.controller;
         switch (c.status) {
           case RhStatus.success:
-            return _banner(Icons.check_circle, Colors.green,
-                'Account connected', c.message);
+            return _successView(c.message);
           case RhStatus.error:
             return _banner(
                 Icons.error, Colors.red, 'Could not sign in', c.message);
           case RhStatus.working:
           case RhStatus.connecting:
-            return const Padding(
-              padding: EdgeInsets.all(24),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: 12),
-                Text('Working…'),
-              ]),
-            );
+            return _workingView(c.message);
           case RhStatus.needInput:
             final p = c.prompt;
             if (p == null) return const SizedBox.shrink();
@@ -153,6 +145,61 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
       return [FilteringTextInputFormatter.deny(RegExp(r'\s'))];
     return null;
   }
+
+  // Working state: a prominent animation + an indeterminate bar sweeping across, so the
+  // wait (Chromium loads / Google verifies) reads as active progress, not a frozen screen.
+  Widget _workingView(String message) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(
+              width: 56,
+              height: 56,
+              child: CircularProgressIndicator(strokeWidth: 5)),
+          const SizedBox(height: 24),
+          const ClipRRect(
+            borderRadius: BorderRadius.all(Radius.circular(4)),
+            child: SizedBox(height: 6, child: LinearProgressIndicator()),
+          ),
+          const SizedBox(height: 18),
+          Text(message.isEmpty ? 'Working…' : message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 15, color: Colors.grey)),
+        ]),
+      );
+
+  // Success: keep the connected account visible and offer the two next actions.
+  Widget _successView(String email) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(Icons.check_circle, color: Colors.green, size: 48),
+              const SizedBox(height: 12),
+              const Text('Account connected',
+                  textAlign: TextAlign.center,
+                  style:
+                      TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              if (email.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(email,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey)),
+                ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: widget.onAddNext,
+                icon: const Icon(Icons.add),
+                label: const Text('Add Next Account'),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                onPressed: widget.onFinish,
+                child: const Text('Finish'),
+              ),
+            ]),
+      );
 
   Widget _banner(IconData icon, Color color, String title, String msg) =>
       Padding(
