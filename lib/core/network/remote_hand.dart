@@ -104,7 +104,13 @@ class RemoteHand extends ChangeNotifier {
   void _onFrame(Map<String, dynamic> j) {
     if ((j['session_id'] as String?) != null && j['session_id'] != sessionId)
       return; // not ours
-    switch (j['type'] as String? ?? '') {
+    final type = j['type'] as String? ?? '';
+    // Once authorization has succeeded the flow is over. Ignore any late/replayed prompt
+    // or state — the relay re-sends the last prompt to a reconnecting ws, which would
+    // otherwise clobber the 'Account connected' banner back into the verification form.
+    if (_status == RhStatus.success && (type == 'rh_prompt' || type == 'rh_state'))
+      return;
+    switch (type) {
       case 'rh_hello':
         _pubkey = j['relay_pubkey'] as String?;
         notifyListeners();

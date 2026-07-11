@@ -153,6 +153,28 @@ void main() {
       expect(rh.status, RhStatus.success);
       expect(rh.message, 'demo@example.com');
     });
+
+    test('late replayed prompt after success is ignored (banner keeps the account)',
+        () async {
+      final t = FakeTransport();
+      final rh = RemoteHand(ws: t, sessionId: 's1');
+      t.emit({'type': 'auth_done', 'provider': 'gdrive', 'email': 'demo@example.com'});
+      await pumpEventQueue();
+      expect(rh.status, RhStatus.success);
+      // relay replays the last prompt to a reconnecting ws — must NOT revert the banner
+      t.emit({
+        'type': 'rh_prompt',
+        'session_id': 's1',
+        'step': 'sms_code',
+        'title': 'Enter the code',
+        'fields': [
+          {'name': 'code', 'label': 'Code', 'kind': 'code'}
+        ],
+      });
+      await pumpEventQueue();
+      expect(rh.status, RhStatus.success); // stayed success
+      expect(rh.message, 'demo@example.com'); // still shows which account
+    });
   });
 
   group('RemoteHand HTTP input (#3 reliable transport, not lossy ws)', () {
