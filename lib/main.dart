@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // built-in glyphs (Icons.facebook etc.) plus generic widgets for ones Material doesn't ship.
 import 'package:url_launcher/url_launcher.dart';
 import 'core/auth/auth_service.dart';
+import 'core/auth/web_utils.dart';
 import 'core/network/relay_client.dart';
 import 'features/auth/login_screen.dart';
 import 'features/storage_accounts/accounts_screen.dart';
@@ -206,7 +207,9 @@ class _HomeScreenState extends State<HomeScreen> {
           relay: _relay, relayUrl: _relayUrl, onRelayUrlChanged: setRelayUrl),
     ];
     return Scaffold(
-      body: screens[_tab],
+      body: AuthService().isDemo
+          ? Column(children: [const _DemoBanner(), Expanded(child: screens[_tab])])
+          : screens[_tab],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) {
@@ -656,6 +659,41 @@ class _SocialLinkTile extends StatelessWidget {
           ? () =>
               launchUrl(Uri.parse(url!), mode: LaunchMode.externalApplication)
           : null,
+    );
+  }
+}
+
+// Persistent strip shown across the app in demo mode: sets expectations (shared sandbox,
+// periodic reset) and offers a one-tap exit back to the login screen.
+class _DemoBanner extends StatelessWidget {
+  const _DemoBanner();
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF3A2E00),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(children: [
+            const Icon(Icons.science_outlined, size: 18, color: Color(0xFFE0B000)),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Demo mode — shared sandbox. Uploads and account changes reset periodically.',
+                style: TextStyle(color: Color(0xFFE0C060), fontSize: 12),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                await AuthService().signOut();
+                setLocationHref(getLocationHref().split('?').first.split('#').first); // reload → login
+              },
+              child: const Text('Exit', style: TextStyle(color: Color(0xFFE0B000))),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }

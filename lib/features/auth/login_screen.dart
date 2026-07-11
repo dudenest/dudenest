@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 // font_awesome_flutter removed — see main.dart for rationale (Dart 3 final-class regression).
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/auth/auth_service.dart';
+import '../../core/auth/web_utils.dart';
 import 'starfield_background.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -57,7 +58,9 @@ class LoginScreen extends StatelessWidget {
                     _OAuthButton(label: 'Continue with Apple',
                         icon: const Icon(Icons.apple, size: 20, color: Color(0xFFB0C4DE)),
                         onTap: () => AuthService().signInWith('apple')),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
+                    const _TryDemoButton(),
+                    const SizedBox(height: 24),
                     const Text(
                       'By signing in you agree to the Terms of Service.\nYour files are stored encrypted across multiple providers.',
                       textAlign: TextAlign.center,
@@ -70,6 +73,44 @@ class LoginScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// "Try DEMO" — POSTs /auth/demo, then reloads so the app root rebuilds logged-in
+// (mirrors the OAuth return). Shows a spinner while minting and a snackbar on failure.
+class _TryDemoButton extends StatefulWidget {
+  const _TryDemoButton();
+  @override
+  State<_TryDemoButton> createState() => _TryDemoButtonState();
+}
+
+class _TryDemoButtonState extends State<_TryDemoButton> {
+  bool _busy = false;
+
+  Future<void> _go() async {
+    setState(() => _busy = true);
+    try {
+      await AuthService().signInDemo();
+      setLocationHref(getLocationHref().split('?').first.split('#').first); // reload → logged in
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Demo is unavailable right now — please try again later.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: _busy ? null : _go,
+      icon: _busy
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.play_circle_outline, size: 20, color: Color(0xFF7090D0)),
+      label: const Text('Try DEMO — no sign-in needed',
+          style: TextStyle(color: Color(0xFF7090D0), fontWeight: FontWeight.w600)),
     );
   }
 }

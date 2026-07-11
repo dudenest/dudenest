@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'web_utils.dart';
 import 'user_model.dart';
@@ -26,6 +27,7 @@ class AuthService {
   String? get token => _token;
   AuthUser? get user => _user;
   bool get isLoggedIn => _token != null;
+  bool get isDemo => _user?.demo == true;
 
   // Called at app startup — loads token from localStorage + handles OAuth callback in URL
   Future<void> init() async {
@@ -42,7 +44,26 @@ class AuthService {
     if (callbackToken != null) {
       await _saveSession(callbackToken, callbackUser);
       historyReplaceState(uri.replace(queryParameters: {}).toString()); // clean URL
+    } else if (uri.queryParameters['demo'] == '1' && !isLoggedIn) {
+      // Deep link ?demo=1 (landing CTA): start a demo session automatically.
+      try { await signInDemo(); } catch (_) {}
+      historyReplaceState(uri.replace(queryParameters: {}).toString());
     }
+  }
+
+  // Demo login: POST /auth/demo returns {token, user} for a shared throwaway session.
+  Future<void> signInDemo() async {
+    final resp = await http.post(Uri.parse('$_apiBase/auth/demo'));
+    if (resp.statusCode != 200) {
+      throw Exception('Demo unavailable (${resp.statusCode})');
+    }
+    final j = jsonDecode(resp.body) as Map<String, dynamic>;
+    _token = j['token'] as String?;
+    final u = j['user'] as Map<String, dynamic>?;
+    if (u != null) _user = AuthUser.fromJson({...u, 'avatar_url': u['avatar_url']});
+    final prefs = await SharedPreferences.getInstance();
+    if (_token != null) await prefs.setString(_kToken, _token!);
+    if (_user != null) await prefs.setString(_kUser, jsonEncode(_user!.toJson()));
   }
 
   Future<void> _saveSession(String token, String? userBase64) async {
