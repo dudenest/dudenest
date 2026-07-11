@@ -10,6 +10,7 @@ import '../../core/network/relay_client.dart';
 import '../../core/network/remote_hand.dart';
 import '../../core/network/ws_client.dart';
 import '../../core/oauth/oauth_service.dart';
+import '../../core/auth/auth_service.dart';
 import 'remote_hand_form.dart';
 import 'storage_visualizer.dart';
 
@@ -600,19 +601,23 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
       const SizedBox(height: 8),
       const Text('How do you want to connect?', style: TextStyle(color: Colors.grey)),
       const SizedBox(height: 24),
+      // Demo mode shows ONLY "Relay assisted" — the method the demo showcases; the other
+      // login methods (which would send credentials to the user's own Google) are hidden.
       // Method A — recommended
-      Card(
-        child: ListTile(
-          leading: const CircleAvatar(child: Icon(Icons.open_in_browser)),
-          title: const Text('Login via your browser'),
-          subtitle: const Text('Recommended · Your IP is used · Works with any relay'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => setState(() { _method = _AuthMethod.flutterOAuth; _step = _AddStep.oauthFlow; _startOAuth(); }),
+      if (!AuthService().isDemo) ...[
+        Card(
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.open_in_browser)),
+            title: const Text('Login via your browser'),
+            subtitle: const Text('Recommended · Your IP is used · Works with any relay'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => setState(() { _method = _AuthMethod.flutterOAuth; _step = _AddStep.oauthFlow; _startOAuth(); }),
+          ),
         ),
-      ),
-      const SizedBox(height: 12),
+        const SizedBox(height: 12),
+      ],
       // Method E — in-app WebView auto-fill (native only, user's IP ✅)
-      if (!kIsWeb) Card(
+      if (!kIsWeb && !AuthService().isDemo) Card(
         child: ListTile(
           leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.auto_fix_high, color: Colors.white)),
           title: const Text('Auto-fill in app'),
@@ -621,18 +626,20 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
           onTap: () => setState(() { _method = _AuthMethod.webviewOAuth; _step = _AddStep.webviewCredentials; }),
         ),
       ),
-      if (!kIsWeb) const SizedBox(height: 12),
+      if (!kIsWeb && !AuthService().isDemo) const SizedBox(height: 12),
       // Method B — self-hosted only
-      Card(
-        child: ListTile(
-          leading: const CircleAvatar(backgroundColor: Colors.grey, child: Icon(Icons.computer, color: Colors.white)),
-          title: const Text('Relay browser (automated)'),
-          subtitle: const Text('Self-hosted relay only · Uses relay\'s IP'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => setState(() { _method = _AuthMethod.browserAuth; _step = _AddStep.browserFlow; _startBrowserSession(); }),
+      if (!AuthService().isDemo) ...[
+        Card(
+          child: ListTile(
+            leading: const CircleAvatar(backgroundColor: Colors.grey, child: Icon(Icons.computer, color: Colors.white)),
+            title: const Text('Relay browser (automated)'),
+            subtitle: const Text('Self-hosted relay only · Uses relay\'s IP'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => setState(() { _method = _AuthMethod.browserAuth; _step = _AddStep.browserFlow; _startBrowserSession(); }),
+          ),
         ),
-      ),
-      const SizedBox(height: 12),
+        const SizedBox(height: 12),
+      ],
       // Method 3 — Relay-assisted: native dynamic form, relay drives a vanilla
       // (undetectable) Chromium under the hood. Credentials are sealed to the relay.
       Card(
@@ -645,18 +652,32 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
         ),
       ),
       const SizedBox(height: 12),
-      Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
-        child: const Row(children: [
-          Icon(Icons.info_outline, color: Colors.blue, size: 18),
-          SizedBox(width: 8),
-          Expanded(child: Text(
-            'For best security, use "Login via your browser" — Google sees your personal IP for each account.',
-            style: TextStyle(fontSize: 12, color: Colors.blue),
-          )),
-        ]),
-      ),
+      if (!AuthService().isDemo)
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: Colors.blue.withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
+          child: const Row(children: [
+            Icon(Icons.info_outline, color: Colors.blue, size: 18),
+            SizedBox(width: 8),
+            Expanded(child: Text(
+              'For best security, use "Login via your browser" — Google sees your personal IP for each account.',
+              style: TextStyle(fontSize: 12, color: Colors.blue),
+            )),
+          ]),
+        )
+      else
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: const Color(0xFFE0B000).withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
+          child: const Row(children: [
+            Icon(Icons.science_outlined, color: Color(0xFFC09000), size: 18),
+            SizedBox(width: 8),
+            Expanded(child: Text(
+              'Demo showcases relay-assisted login. This is a shared sandbox — it resets periodically.',
+              style: TextStyle(fontSize: 12, color: Color(0xFFB08000)),
+            )),
+          ]),
+        ),
     ],
   );
 
