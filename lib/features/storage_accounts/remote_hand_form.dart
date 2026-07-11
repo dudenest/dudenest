@@ -95,7 +95,7 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
             Image.memory(base64Decode(p.imageB64!), fit: BoxFit.contain),
             const SizedBox(height: 16),
           ],
-          for (final f in p.fields) _fieldWidget(f),
+          for (final f in p.fields) _fieldWidget(f, p, ready),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: (ready && _allValid(p)) ? () => _submit(p) : null,
@@ -117,7 +117,7 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
       .where((f) => f.kind != 'captcha_image')
       .every((f) => validateRhField(f.kind, _ctrlFor(f).text) == null);
 
-  Widget _fieldWidget(RhField f) {
+  Widget _fieldWidget(RhField f, RhPrompt p, bool ready) {
     if (f.kind == 'captcha_image')
       return const SizedBox.shrink(); // image already shown above
     final text = _ctrlFor(f).text;
@@ -129,6 +129,10 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
         controller: _ctrlFor(f),
         obscureText: f.obscure,
         inputFormatters: _inputFormattersFor(f),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) {
+          if (ready && _allValid(p)) _submit(p);
+        },
         onChanged: (_) => setState(() {}), // re-validate + re-gate Continue
         keyboardType: f.kind == 'tel'
             ? TextInputType.phone

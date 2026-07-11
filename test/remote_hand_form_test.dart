@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pinenacl/x25519.dart';
 
 import 'package:dudenest/core/network/remote_hand.dart';
 import 'package:dudenest/features/storage_accounts/remote_hand_form.dart';
@@ -153,7 +155,8 @@ void main() {
     expect(text.style?.color, Colors.red);
   });
 
-  testWidgets('renders send-code confirmation without phone field', (tester) async {
+  testWidgets('renders send-code confirmation without phone field',
+      (tester) async {
     final t = FakeTransport();
     final rh = RemoteHand(ws: t, sessionId: 's1');
     await tester.pumpWidget(
@@ -167,11 +170,49 @@ void main() {
       'fields': [],
     });
     await tester.pump();
-    expect(find.text('Google will send a verification code to your phone'), findsOneWidget);
+    expect(find.text('Google will send a verification code to your phone'),
+        findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     await tester.tap(find.text('Continue'));
     await tester.pump();
     expect(t.sent.single['step'], 'send_code');
     expect(t.sent.single['values'], <String, String>{});
+  });
+
+  testWidgets('submits with Enter after password is valid', (tester) async {
+    final sk = PrivateKey.generate();
+    final t = FakeTransport();
+    final rh = RemoteHand(ws: t, sessionId: 's1');
+    await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
+    t.emit({
+      'type': 'rh_hello',
+      'session_id': 's1',
+      'relay_pubkey': base64.encode(sk.publicKey)
+    });
+    t.emit({
+      'type': 'rh_prompt',
+      'session_id': 's1',
+      'step': 'email',
+      'title': 'Sign in',
+      'fields': [
+        {'name': 'login', 'label': 'Email', 'kind': 'text'},
+        {
+          'name': 'password',
+          'label': 'Password',
+          'kind': 'password',
+          'sensitive': true
+        },
+      ],
+    });
+    await tester.pump();
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'demo@example.com');
+    await tester.enterText(fields.at(1), 'secret');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(t.sent.single['step'], 'email');
+    expect(t.sent.single['values'], {'login': 'demo@example.com'});
+    expect(t.sent.single.containsKey('sealed'), isTrue);
   });
 }
