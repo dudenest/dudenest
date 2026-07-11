@@ -146,19 +146,14 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
     return null;
   }
 
-  // Working state: a prominent animation + an indeterminate bar sweeping across, so the
-  // wait (Chromium loads / Google verifies) reads as active progress, not a frozen screen.
+  // Working state: an indeterminate bar sweeping across, so the wait (Chromium loads /
+  // Google verifies) reads as active progress. The "submitting…" message tells the step.
   Widget _workingView(String message) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(
-              width: 56,
-              height: 56,
-              child: CircularProgressIndicator(strokeWidth: 5)),
-          const SizedBox(height: 24),
           const ClipRRect(
             borderRadius: BorderRadius.all(Radius.circular(4)),
-            child: SizedBox(height: 6, child: LinearProgressIndicator()),
+            child: SizedBox(height: 8, child: LinearProgressIndicator()),
           ),
           const SizedBox(height: 18),
           Text(message.isEmpty ? 'Working…' : message,
