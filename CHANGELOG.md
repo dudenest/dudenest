@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.1] — 2026-07-13
+
+### Fixed
+- **Upload button now in every section.** The Photos and Files screens only offered an upload action in their empty state — once files existed you had to switch to the separate Upload tab. Added a persistent "Upload" `FloatingActionButton` to both sections (hidden only during multi-select). Refreshes the file list on return.
+
 ## [0.7.0] — 2026-07-12 — Method 3 Remote-Hand login, Demo mode & tile cache
 
 ### Added
