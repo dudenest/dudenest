@@ -9,9 +9,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.text('Continue with GitHub'), findsOneWidget);
-    expect(find.text('Continue with Apple'), findsOneWidget);
+    expect(find.text('Login with Google'), findsOneWidget);
+    expect(find.text('Login with GitHub'), findsOneWidget);
+    expect(find.text('Login with Apple'), findsOneWidget);
   });
 
   testWidgets('all OAuth buttons are tappable', (tester) async {
@@ -19,9 +19,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
-    await tester.tap(find.text('Continue with Google'), warnIfMissed: false);
-    await tester.tap(find.text('Continue with GitHub'), warnIfMissed: false);
-    await tester.tap(find.text('Continue with Apple'), warnIfMissed: false);
+    await tester.tap(find.text('Login with Google'), warnIfMissed: false);
+    await tester.tap(find.text('Login with GitHub'), warnIfMissed: false);
+    await tester.tap(find.text('Login with Apple'), warnIfMissed: false);
     await tester.pump();
   });
 

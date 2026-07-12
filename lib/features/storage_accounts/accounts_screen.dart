@@ -198,6 +198,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               final tile = _AccountListTile(
                 provider: p, admin: admin, scan: _scanFor(p), relay: widget.relay, onChanged: _load,
                 showHamburger: admin != null, // s329 #3: paint the always-visible handle inside the tile header
+                dragIndex: admin != null ? i : null, // only the hamburger drags (so the list can scroll)
                 replicationFactor: (_adminPolicy['replication_factor'] as int?) ?? 2, // s329 #C+D: drives Active/Standby slot
                 onReconnect: () async {
                   await showModalBottomSheet(context: context, isScrollControlled: true, useSafeArea: true,
@@ -205,11 +206,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   _load();
                 },
               );
-              // Wrap admin-matched tiles in the immediate-drag listener — clicking ANYWHERE on the
-              // Card body triggers reorder (matches user expectation "łapię i ciągnę"). Orphan tiles
-              // (admin==null) skip the wrapper so they cannot be dragged into the reorder payload.
-              if (admin == null) return KeyedSubtree(key: tileKey, child: tile);
-              return ReorderableDragStartListener(key: tileKey, index: i, child: tile);
+              // Drag is triggered ONLY by the top-left hamburger handle (ReorderableDragStartListener
+              // lives inside the tile on that handle) so the rest of the tile scrolls the list normally.
+              return KeyedSubtree(key: tileKey, child: tile);
             },
           )
         : ListView.builder(
@@ -1131,10 +1130,18 @@ class _AccountListTile extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           // Header row: drag-cue (when reorderable) + icon + id badge + email + connection state + popup menu
           Row(children: [
-            if (showHamburger) const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: _DragHandleHamburger(), // s329 #3: pure-paint cue; the tile itself is wrapped in ReorderableDragStartListener upstream
-            ),
+            if (showHamburger)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                // The hamburger is the ONLY drag trigger — wrap it in the reorder listener so
+                // grabbing it starts a drag, while the rest of the tile scrolls the list.
+                child: dragIndex != null
+                    ? MouseRegion(
+                        cursor: SystemMouseCursors.grab,
+                        child: ReorderableDragStartListener(
+                            index: dragIndex!, child: const _DragHandleHamburger()))
+                    : const _DragHandleHamburger(),
+              ),
             _providerIcon(type, available),
             const SizedBox(width: 8),
             if (id != null) _IDBadge(id: id, pinned: pinned),

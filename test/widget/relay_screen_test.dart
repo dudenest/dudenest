@@ -178,7 +178,7 @@ void main() {
     expect(find.textContaining('JPG'), findsOneWidget);
     expect(find.textContaining('PDF'), findsOneWidget);
     expect(find.byTooltip('List'), findsOneWidget);
-    expect(find.byTooltip('Long names'), findsOneWidget);
+    expect(find.byTooltip('Long names'), findsNothing); // removed from the view toggle
     expect(find.byTooltip('Refresh'), findsOneWidget);
     expect(find.byTooltip('Gallery'), findsNothing);
     expect(seen.where((p) => p.endsWith('/thumbnail')), isEmpty);

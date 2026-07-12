@@ -8,7 +8,7 @@ void main() {
     await tester.pumpWidget(const DudenestApp());
     // Since it starts at LoginScreen (AuthService token is null in tests),
     // we should see the login buttons.
-    expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.text('Continue with GitHub'), findsOneWidget);
+    expect(find.text('Login with Google'), findsOneWidget);
+    expect(find.text('Login with GitHub'), findsOneWidget);
   });
 }

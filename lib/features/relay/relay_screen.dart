@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/network/relay_client.dart';
 import '../../core/auth/web_utils.dart';
+import '../../core/auth/auth_service.dart';
 import '../storage_accounts/accounts_screen.dart';
 import '../upload/upload_screen.dart';
 import '../files/gallery_screen.dart';
@@ -657,31 +658,34 @@ class _RelayScreenState extends State<RelayScreen> {
                 ),
               ),
             ),
-          Tooltip(
-            message: 'App version — view on GitHub',
-            child: GestureDetector(
-              onTap: () => launchUrl(
-                  Uri.parse('https://github.com/dudenest/dudenest'),
-                  mode: LaunchMode.externalApplication),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12)),
-                child: Text(_kVersion,
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontFamily: 'monospace',
-                        color: scheme.onPrimaryContainer,
-                        fontWeight: FontWeight.w600)),
+          if (AuthService().isDemo)
+            const _DemoBadge()  // demo mode: slow green fade "DEMO" replaces the version chip
+          else
+            Tooltip(
+              message: 'App version — view on GitHub',
+              child: GestureDetector(
+                onTap: () => launchUrl(
+                    Uri.parse('https://github.com/dudenest/dudenest'),
+                    mode: LaunchMode.externalApplication),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Text(_kVersion,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                          color: scheme.onPrimaryContainer,
+                          fontWeight: FontWeight.w600)),
+                ),
               ),
             ),
-          ),
           if (!_selectionMode) ...[
             for (final mode in widget.folder == 'files'
-                ? const [_ViewMode.list, _ViewMode.longNames]
-                : _ViewMode.values)
+                ? const [_ViewMode.list]
+                : const [_ViewMode.gallery, _ViewMode.list])
               IconButton(
                 icon: Icon(_modeIcon(mode),
                     color: _viewMode == mode ? scheme.primary : null),
@@ -1190,6 +1194,47 @@ class _GallerySettingsSheetState extends State<_GallerySettingsSheet> {
             ]),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+// Slowly-pulsing green "DEMO" badge shown in place of the version chip in demo mode.
+class _DemoBadge extends StatefulWidget {
+  const _DemoBadge();
+  @override
+  State<_DemoBadge> createState() => _DemoBadgeState();
+}
+
+class _DemoBadgeState extends State<_DemoBadge> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
+  late final Animation<double> _fade =
+      Tween<double>(begin: 0.35, end: 1.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        decoration: BoxDecoration(
+            color: const Color(0x2234C759),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF34C759))),
+        child: const Text('DEMO',
+            style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 1.5,
+                color: Color(0xFF34C759),
+                fontWeight: FontWeight.w700)),
       ),
     );
   }

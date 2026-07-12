@@ -48,14 +48,14 @@ class LoginScreen extends StatelessWidget {
                     const Text('Private encrypted cloud storage', textAlign: TextAlign.center,
                         style: TextStyle(color: Color(0xFF7090A8), fontSize: 14)),
                     const SizedBox(height: 48),
-                    _OAuthButton(label: 'Continue with Google', icon: _GoogleIcon(),
+                    _OAuthButton(label: 'Login with Google', icon: _GoogleIcon(),
                         onTap: () => AuthService().signInWith('google')),
                     const SizedBox(height: 12),
-                    _OAuthButton(label: 'Continue with GitHub',
+                    _OAuthButton(label: 'Login with GitHub',
                         icon: const Icon(Icons.code, size: 20, color: Color(0xFFB0C4DE)),
                         onTap: () => AuthService().signInWith('github')),
                     const SizedBox(height: 12),
-                    _OAuthButton(label: 'Continue with Apple',
+                    _OAuthButton(label: 'Login with Apple',
                         icon: const Icon(Icons.apple, size: 20, color: Color(0xFFB0C4DE)),
                         onTap: () => AuthService().signInWith('apple')),
                     const SizedBox(height: 24),
@@ -107,10 +107,10 @@ class _TryDemoButtonState extends State<_TryDemoButton> {
     return TextButton.icon(
       onPressed: _busy ? null : _go,
       icon: _busy
-          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.play_circle_outline, size: 20, color: Color(0xFF7090D0)),
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF34C759)))
+          : const Icon(Icons.play_circle_outline, size: 20, color: Color(0xFF34C759)),
       label: const Text('Try DEMO — no sign-in needed',
-          style: TextStyle(color: Color(0xFF7090D0), fontWeight: FontWeight.w600)),
+          style: TextStyle(color: Color(0xFF34C759), fontWeight: FontWeight.w600)),
     );
   }
 }
