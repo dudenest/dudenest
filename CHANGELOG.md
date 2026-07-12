@@ -7,15 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] — 2026-05-26 — Local tile manifest cache
+## [0.7.0] — 2026-07-12 — Method 3 Remote-Hand login, Demo mode & tile cache
 
 ### Added
+- **Relay-assisted login (method 3):** a native dynamic form drives a vanilla Chromium on the relay (CDP-free, undetectable) to sign into Google — handles email/password, 2FA phone/SMS, send-code, captcha, the "unverified app" warning and consent, with per-field re-prompts on errors. Credentials are sealed to the relay (zero-knowledge). Success screen offers "Add Next Account" / "Finish"; the working state shows a progress bar.
+- **Demo mode:** "Try DEMO — no sign-in needed" on the login screen (+ `?demo=1` deep link) starts a shared throwaway session; a pulsing green DEMO badge marks it and only relay-assisted login is offered. The sandbox resets periodically.
 - Flutter now loads a local tile manifest snapshot before syncing with relay, so Photos/Files can render immediately after the first successful sync.
 - Relay client supports `GET /files/manifest?since=<revision>` with fallback to legacy `GET /files`.
 - Gallery settings expose configurable local tile cache limits and Flutter thumbnail memory LRU limits.
 - Settings duplicates the gallery cache/LRU controls so limits can be changed outside `/Photos`.
 
 ### Changed
+- Login buttons renamed to "Login with Google/GitHub/Apple"; the app version chip now shows the released version instead of the commit hash.
+- Photos view toggle drops the redundant "Long names" mode; cloud-account tiles now reorder only by dragging their handle so the list scrolls normally.
 - Photos and Files share the same cached manifest; tab filtering remains local via the existing `folder` field.
 - Manifest fallback also handles old relays that return HTTP 500 by treating `manifest` as a file ID.
 - `/Files` now shows all cloud-indexed files as a plain list with icon, name, extension, size, and file ID instead of the Photos gallery layout.

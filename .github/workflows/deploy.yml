@@ -38,7 +38,8 @@ jobs:
 
       - name: Build Flutter web
         run: |
-          VERSION="sha-$(echo "$GITHUB_SHA" | cut -c1-7)"
+          # Show the released semantic version (from pubspec) in the app, not the commit sha.
+          VERSION="v$(grep -m1 '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//; s/+.*//')"
           echo "APP_VERSION=$VERSION"
           # --no-tree-shake-icons: ships full MaterialIcons font (~150KB instead of ~13KB tree-shaken).
           # Tree-shaker has been observed (2026-05-19) to omit codepoints for icons whose numeric value
