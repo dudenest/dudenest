@@ -718,6 +718,22 @@ class _RelayScreenState extends State<RelayScreen> {
         if (_selectionMode)
           Positioned(bottom: 0, left: 0, right: 0, child: _buildSelectionBar()),
       ]),
+      // Upload is reachable from every section, not just the empty state — when photos/files
+      // already exist the empty-state button is gone, so this FAB keeps upload one tap away.
+      floatingActionButton: (!_selectionMode &&
+              !_loading &&
+              _error == null &&
+              _visibleFiles.isNotEmpty)
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                await Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => UploadScreen(relay: widget.relay)));
+                _load(); // refresh /files when the user returns
+              },
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Upload'),
+            )
+          : null,
     );
   }
 }
