@@ -5,6 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import '../../core/network/relay_client.dart';
 import '../../main.dart';
 
+typedef UploadFilePicker = Future<FilePickerResult?> Function();
+
 class _UploadJob {
   final String name;
   final int size;
@@ -18,8 +20,11 @@ class _UploadJob {
 }
 
 class UploadScreen extends StatefulWidget {
-  final RelayClient relay;
-  const UploadScreen({super.key, required this.relay});
+  final RelayClient? relay;
+  final int autoPickNonce;
+  final UploadFilePicker? picker;
+  const UploadScreen(
+      {super.key, required this.relay, this.autoPickNonce = 0, this.picker});
   @override
   State<UploadScreen> createState() => _UploadScreenState();
 }
@@ -29,18 +34,45 @@ class _UploadScreenState extends State<UploadScreen> {
   Timer? _ticker;
 
   @override
-  void dispose() { _ticker?.cancel(); super.dispose(); }
+  void initState() {
+    super.initState();
+    if (widget.autoPickNonce > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(_pick());
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant UploadScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autoPickNonce != oldWidget.autoPickNonce) {
+      unawaited(_pick());
+    }
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
 
   void _startTicker() {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (!mounted) { _ticker?.cancel(); return; }
+      if (!mounted) {
+        _ticker?.cancel();
+        return;
+      }
       bool anyActive = false;
       setState(() {
         for (final j in _jobs) {
           if (j.done || j.error != null) continue;
           anyActive = true;
-          j.progress = (j.progress + 0.9 / j.estimatedSecs * 0.1).clamp(0.0, 0.9); // advance per 100ms
+          j.progress = (j.progress + 0.9 / j.estimatedSecs * 0.1)
+              .clamp(0.0, 0.9); // advance per 100ms
         }
       });
       if (!anyActive) _ticker?.cancel();
@@ -49,16 +81,31 @@ class _UploadScreenState extends State<UploadScreen> {
 
   Future<void> _uploadJob(_UploadJob job) async {
     try {
+      final relay = widget.relay;
+      if (relay == null) {
+        throw 'Relay is required before uploading. Install or assign a relay in Settings.';
+      }
       final strategy = DudenestApp.of(context).storageStrategy;
-      await widget.relay.uploadFile(job.name, job.bytes, strategy: strategy);
-      if (mounted) setState(() { job.progress = 1.0; job.done = true; });
+      await relay.uploadFile(job.name, job.bytes, strategy: strategy);
+      if (mounted) {
+        setState(() {
+          job.progress = 1.0;
+          job.done = true;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() { job.error = e.toString(); });
+      if (mounted) {
+        setState(() {
+          job.error = e.toString();
+        });
+      }
     }
   }
 
   Future<void> _pick() async {
-    final res = await FilePicker.platform.pickFiles(withData: true, allowMultiple: true);
+    final res = await (widget.picker ??
+        () => FilePicker.platform
+            .pickFiles(withData: true, allowMultiple: true))();
     if (res == null || res.files.isEmpty) return;
     final newJobs = res.files
         .where((f) => f.bytes != null)
@@ -67,7 +114,9 @@ class _UploadScreenState extends State<UploadScreen> {
     if (newJobs.isEmpty) return;
     setState(() => _jobs.addAll(newJobs));
     _startTicker();
-    for (final job in newJobs) { _uploadJob(job); } // fire-and-forget, updates state on complete
+    for (final job in newJobs) {
+      _uploadJob(job);
+    } // fire-and-forget, updates state on complete
   }
 
   String _fmtSize(int bytes) {
@@ -85,7 +134,8 @@ class _UploadScreenState extends State<UploadScreen> {
         actions: [
           if (hasDone && !hasActive)
             TextButton(
-              onPressed: () => setState(() => _jobs.removeWhere((j) => j.done || j.error != null)),
+              onPressed: () => setState(
+                  () => _jobs.removeWhere((j) => j.done || j.error != null)),
               child: const Text('Clear'),
             ),
         ],
@@ -108,7 +158,8 @@ class _UploadScreenState extends State<UploadScreen> {
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: _jobs.length,
-                  itemBuilder: (ctx, i) => _JobCard(job: _jobs[i], fmtSize: _fmtSize),
+                  itemBuilder: (ctx, i) =>
+                      _JobCard(job: _jobs[i], fmtSize: _fmtSize),
                 ),
         ),
       ]),
@@ -134,7 +185,8 @@ class _JobCard extends StatelessWidget {
             Row(children: [
               Expanded(
                 child: Text(job.name,
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w500),
                     overflow: TextOverflow.ellipsis),
               ),
               const SizedBox(width: 8),
@@ -143,9 +195,12 @@ class _JobCard extends StatelessWidget {
             const SizedBox(height: 8),
             if (job.done) ...[
               Row(children: [
-                Icon(Icons.check_circle, color: theme.colorScheme.primary, size: 16),
+                Icon(Icons.check_circle,
+                    color: theme.colorScheme.primary, size: 16),
                 const SizedBox(width: 6),
-                Text('Uploaded', style: TextStyle(color: theme.colorScheme.primary, fontSize: 13)),
+                Text('Uploaded',
+                    style: TextStyle(
+                        color: theme.colorScheme.primary, fontSize: 13)),
               ]),
             ] else if (job.error != null) ...[
               Row(children: [

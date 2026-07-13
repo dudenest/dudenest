@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Remote-Hand human takeover embed.** When the relay reports a serious or unknown Google screen with `takeover_url`, the RemoteHand form shows a live form-only noVNC view on mobile (or an external open button on web/desktop). The URL points to `/vnc/dudenest-form.html?...`, which crops the relay browser to the Google form without resizing the browser used by OCR/FSM.
+- **No-relay preview mode for new users.** Accounts without an assigned relay now enter the normal app shell: `/Photos` shows a scrollable grouped placeholder gallery, Upload opens the file picker immediately from the tab/action, and Settings → Relay carries the relay warning plus install/manual actions.
 
 ---
 

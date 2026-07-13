@@ -94,6 +94,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0; // 0=Files, 1=Upload, 2=Settings
+  int _uploadNonce = 0;
   late RelayClient _relay;
   String? _relayUrl;
   String? _relayError;
@@ -191,17 +192,25 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     // Show loading spinner until relay token is ready — prevents cold-start 403 on Files tab
-    if (!_relayReady)
+    if (!_relayReady) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_relayUrl == null)
-      return _RelayUnavailableScreen(
-          message: _relayError ?? 'Cannot load relay', onRetry: _loadRelayUrl);
+    }
+    final hasRelay = _relayUrl != null;
     final screens = [
-      RelayScreen(relay: _relay, folder: 'photos'), // P3: media-only tab
-      RelayScreen(relay: _relay, folder: 'files'), // P3: non-media tab
-      UploadScreen(relay: _relay),
+      hasRelay
+          ? RelayScreen(relay: _relay, folder: 'photos')
+          : _PlaceholderPhotosScreen(onUpload: _openUpload),
+      hasRelay
+          ? RelayScreen(relay: _relay, folder: 'files')
+          : _RelayRequiredPlaceholder(
+              message: _relayError ?? 'No relay assigned to this account'),
+      UploadScreen(
+          relay: hasRelay ? _relay : null, autoPickNonce: _uploadNonce),
       SettingsScreen(
-          relay: _relay, relayUrl: _relayUrl!, onRelayUrlChanged: setRelayUrl),
+          relay: hasRelay ? _relay : null,
+          relayUrl: _relayUrl,
+          relayError: _relayError,
+          onRelayUrlChanged: setRelayUrl),
     ];
     return Scaffold(
       body: screens[
@@ -211,8 +220,13 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (i) {
           // Refresh relay token when switching INTO a tab that hits /files (Photos or Files).
           // Settings + Upload don't read /files so they don't need it.
-          if ((i == 0 || i == 1) && _tab != i) _loadRelayUrl();
-          setState(() => _tab = i);
+          if ((i == 0 || i == 1) && _tab != i) {
+            _loadRelayUrl();
+          }
+          setState(() {
+            _tab = i;
+            if (i == 2) _uploadNonce++;
+          });
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.image), label: 'Photos'),
@@ -223,14 +237,19 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  void _openUpload() => setState(() {
+        _tab = 2;
+        _uploadNonce++;
+      });
 }
 
-class _RelayUnavailableScreen extends StatelessWidget {
+class _RelayRequiredPlaceholder extends StatelessWidget {
   final String message;
-  final VoidCallback onRetry;
-  const _RelayUnavailableScreen({required this.message, required this.onRetry});
+  const _RelayRequiredPlaceholder({required this.message});
   @override
   Widget build(BuildContext context) => Scaffold(
+      appBar: AppBar(title: const Text('Files')),
       body: Center(
           child: Padding(
               padding: const EdgeInsets.all(32),
@@ -244,24 +263,74 @@ class _RelayUnavailableScreen extends StatelessWidget {
                     textAlign: TextAlign.center),
                 const SizedBox(height: 8),
                 const Text(
-                    'This account does not have a server-authoritative relay URL and token. Please contact support or assign a relay in the backend.',
+                    'A relay is required to browse stored files. You can still upload after assigning or installing a relay.',
                     textAlign: TextAlign.center),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Retry')),
               ]))));
 }
 
+class _PlaceholderPhotosScreen extends StatelessWidget {
+  final VoidCallback onUpload;
+  const _PlaceholderPhotosScreen({required this.onUpload});
+  @override
+  Widget build(BuildContext context) {
+    final dates = ['Today', 'Yesterday', 'Sunday', 'Last week'];
+    return Scaffold(
+        appBar: AppBar(title: const Text('Photos'), actions: [
+          IconButton(
+              onPressed: onUpload,
+              icon: const Icon(Icons.upload),
+              tooltip: 'Upload photos')
+        ]),
+        body: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: dates.length,
+            itemBuilder: (ctx, section) =>
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
+                      child: Text(dates[section],
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700))),
+                  GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: 25,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 5,
+                              crossAxisSpacing: 6,
+                              mainAxisSpacing: 6),
+                      itemBuilder: (ctx, i) {
+                        final n = section * 25 + i;
+                        return DecoratedBox(
+                            decoration: BoxDecoration(
+                                color: Colors
+                                    .primaries[n % Colors.primaries.length]
+                                    .shade100,
+                                borderRadius: BorderRadius.circular(8)),
+                            child: Center(
+                                child: Icon(Icons.image,
+                                    color: Colors
+                                        .primaries[n % Colors.primaries.length]
+                                        .shade400,
+                                    size: 20)));
+                      }),
+                ])));
+  }
+}
+
 class SettingsScreen extends StatelessWidget {
-  final RelayClient relay;
-  final String relayUrl;
+  final RelayClient? relay;
+  final String? relayUrl;
+  final String? relayError;
   final void Function(String) onRelayUrlChanged;
   const SettingsScreen(
       {super.key,
       required this.relay,
       required this.relayUrl,
+      this.relayError,
       required this.onRelayUrlChanged});
   @override
   Widget build(BuildContext context) {
@@ -312,8 +381,13 @@ class SettingsScreen extends StatelessWidget {
             SizedBox(width: 4),
             Icon(Icons.chevron_right, size: 18, color: Colors.grey),
           ]),
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => UpdateScreen(relay: relay))),
+          enabled: relay != null,
+          onTap: relay == null
+              ? null
+              : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => UpdateScreen(relay: relay!))),
         ),
         const Divider(),
         const ListTile(
@@ -338,57 +412,35 @@ class SettingsScreen extends StatelessWidget {
         const ListTile(
             title:
                 Text('Relay', style: TextStyle(fontWeight: FontWeight.bold))),
-        ListTile(
-          leading: const Icon(Icons.router),
-          title: const Text('Relay URL (dev/custom override)'),
-          subtitle: Text(relayUrl,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
-          trailing: const Icon(Icons.edit),
-          onTap: () async {
-            final ctrl = TextEditingController(text: relayUrl);
-            final result = await showDialog<String>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Set dev/custom Relay URL'),
-                content: TextField(
-                    controller: ctrl,
-                    decoration: const InputDecoration(
-                        helperText:
-                            'Logged-in production users use the server-assigned relay URL and token.',
-                        hintText: 'http://localhost:8086')),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancel')),
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-                      child: const Text('Save')),
-                ],
-              ),
-            );
-            if (result != null && result.isNotEmpty) onRelayUrlChanged(result);
-          },
-        ),
+        if (relayUrl != null)
+          _RelayUrlTile(
+              relayUrl: relayUrl!, onRelayUrlChanged: onRelayUrlChanged)
+        else
+          _NoRelaySettings(
+              relayError: relayError, onRelayUrlChanged: onRelayUrlChanged),
         const Divider(),
         const ListTile(
             title:
                 Text('Storage', style: TextStyle(fontWeight: FontWeight.bold))),
-        ListTile(
-          leading: const Icon(Icons.sd_storage),
-          title: const Text('Storage Strategy'),
-          subtitle:
-              const Text('1 file + N replicas (per SelectReplicas policy)'),
-          trailing: const Icon(Icons.copy_all),
+        const ListTile(
+          leading: Icon(Icons.sd_storage),
+          title: Text('Storage Strategy'),
+          subtitle: Text('1 file + N replicas (per SelectReplicas policy)'),
+          trailing: Icon(Icons.copy_all),
         ),
         ListTile(
           leading: const Icon(Icons.cloud),
           title: const Text('Cloud Accounts'),
           subtitle: const Text('Connected Google Drive accounts'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => AccountsScreen(relay: relay)),
-          ),
+          enabled: relay != null,
+          onTap: relay == null
+              ? null
+              : () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => AccountsScreen(relay: relay!)),
+                  ),
         ),
         ListTile(
           leading: const Icon(Icons.backup),
@@ -409,29 +461,29 @@ class SettingsScreen extends StatelessWidget {
         const ListTile(
             title: Text('Community',
                 style: TextStyle(fontWeight: FontWeight.bold))),
-        _SocialLinkTile(
+        const _SocialLinkTile(
             icon: Icons.code,
-            color: const Color(0xFF24292e),
+            color: Color(0xFF24292e),
             label: 'GitHub',
             subtitle: 'Source code',
             url: 'https://github.com/dudenest/dudenest'),
-        _SocialLinkTile(
+        const _SocialLinkTile(
             icon: Icons.forum,
-            color: const Color(0xFF5865F2),
+            color: Color(0xFF5865F2),
             label: 'Discord',
             subtitle: 'Community chat',
             url: 'https://discord.gg/pYjR9jS4'),
-        _SocialLinkTile(
+        const _SocialLinkTile(
             icon: Icons.play_arrow_rounded,
-            color: const Color(0xFFFF0000),
+            color: Color(0xFFFF0000),
             label: 'YouTube',
             subtitle: 'Videos — coming soon'),
-        _SocialLinkTile(
+        const _SocialLinkTile(
             icon: Icons.facebook,
-            color: const Color(0xFF1877F2),
+            color: Color(0xFF1877F2),
             label: 'Facebook',
             subtitle: 'Page — coming soon'),
-        _SocialLinkTile(
+        const _SocialLinkTile(
             icon: Icons.close,
             color: Colors.black87,
             label: 'X / Twitter',
@@ -439,6 +491,112 @@ class SettingsScreen extends StatelessWidget {
       ]),
     );
   }
+}
+
+class _RelayUrlTile extends StatelessWidget {
+  final String relayUrl;
+  final void Function(String) onRelayUrlChanged;
+  const _RelayUrlTile(
+      {required this.relayUrl, required this.onRelayUrlChanged});
+  @override
+  Widget build(BuildContext context) => ListTile(
+      leading: const Icon(Icons.router),
+      title: const Text('Relay URL (dev/custom override)'),
+      subtitle: Text(relayUrl,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+      trailing: const Icon(Icons.edit),
+      onTap: () async {
+        final ctrl = TextEditingController(text: relayUrl);
+        final result = await showDialog<String>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+                    title: const Text('Set dev/custom Relay URL'),
+                    content: TextField(
+                        controller: ctrl,
+                        decoration: const InputDecoration(
+                            helperText:
+                                'Logged-in production users use the server-assigned relay URL and token.',
+                            hintText: 'http://localhost:8086')),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancel')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                          child: const Text('Save')),
+                    ]));
+        if (result != null && result.isNotEmpty) onRelayUrlChanged(result);
+      });
+}
+
+class _NoRelaySettings extends StatelessWidget {
+  final String? relayError;
+  final void Function(String) onRelayUrlChanged;
+  const _NoRelaySettings(
+      {required this.relayError, required this.onRelayUrlChanged});
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        ListTile(
+            leading: const Icon(Icons.warning_amber, color: Colors.orange),
+            title: const Text('No relay assigned to this account'),
+            subtitle: Text(relayError ?? 'Cannot load relay')),
+        const ListTile(
+            leading: Icon(Icons.router_outlined),
+            title: Text('Add local relay IP 192.168.x.x'),
+            subtitle:
+                Text('Disabled until local relay discovery finds a candidate'),
+            enabled: false),
+        const ListTile(
+            leading: Icon(Icons.cloud_outlined),
+            title: Text('Add remote relay'),
+            subtitle: Text('Coming soon'),
+            enabled: false),
+        ListTile(
+            leading: const Icon(Icons.computer),
+            title: const Text('Install new relay Virtual Machine'),
+            subtitle: const Text('Show install command'),
+            onTap: () => showDialog<void>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                        title: const Text('Install relay VM'),
+                        content: const SelectableText(
+                            'curl -sSL https://raw.githubusercontent.com/dudenest/dudenest-relay/main/scripts/install.sh | sudo bash'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Close'))
+                        ]))),
+        ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text('Enter new relay code'),
+            subtitle: const Text('Advanced dev/custom/manual address or code'),
+            onTap: () async {
+              final ctrl = TextEditingController();
+              final result = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                          title: const Text(
+                              'Enter dev/custom relay address or code'),
+                          content: TextField(
+                              controller: ctrl,
+                              decoration: const InputDecoration(
+                                  helperText:
+                                      'Manual entry is not secure production pairing.',
+                                  hintText:
+                                      'http://192.168.1.50:8086 or code')),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Cancel')),
+                            TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(ctx, ctrl.text.trim()),
+                                child: const Text('Save')),
+                          ]));
+              if (result != null && result.isNotEmpty)
+                onRelayUrlChanged(result);
+            }),
+      ]);
 }
 
 // ─── Gallery Settings Tile ────────────────────────────────────────────────────
