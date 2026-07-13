@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Local relay scanner retry.** Settings now checks likely relay IPs first, uses a longer probe timeout for browser LAN/PNA latency, retries automatically every 12 seconds, shows scan progress, and validates manual `IP:8086` entries through `/pairing/info` before offering `Claim`.
+- **Local relay Claim pairing.** Claim now sends the LAN-discovered `relay_id` to the backend so the hub can pair that exact provisioned relay instead of relying on public-IP matching.
 
 ---
 

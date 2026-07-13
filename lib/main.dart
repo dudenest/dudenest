@@ -710,10 +710,16 @@ class _NoRelaySettingsState extends State<_NoRelaySettings> {
   Future<void> _claimRelay() async {
     final token = AuthService().token;
     if (token == null || _candidate == null || _claiming) return;
+    if (_candidate!.relayID.isEmpty) {
+      setState(() => _scanError =
+          'Relay has no relay_id yet; wait for provisioning to finish, then scan again.');
+      return;
+    }
     setState(() => _claiming = true);
     try {
       final resp = await http.get(
-        Uri.parse('https://api.dudenest.com/api/v1/relay/discover'),
+        Uri.https('api.dudenest.com', '/api/v1/relay/discover',
+            {'relay_id': _candidate!.relayID}),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) {
