@@ -564,25 +564,39 @@ class _NoRelaySettingsState extends State<_NoRelaySettings> {
   bool _scanning = false;
   bool _claiming = false;
   String? _scanError;
+  String _scanStatus = 'Preparing local relay scan…';
+  Timer? _retryTimer;
 
   @override
   void initState() {
     super.initState();
     _scanLocalRelays();
+    _retryTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (!_scanning && _candidate == null) _scanLocalRelays(auto: true);
+    });
   }
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
     _client.close();
     super.dispose();
   }
 
-  Future<void> _scanLocalRelays() async {
+  Future<void> _scanLocalRelays({bool auto = false}) async {
     if (_scanning) return;
     setState(() {
       _scanning = true;
       _scanError = null;
+      _scanStatus = auto
+          ? 'Retrying local relay scan…'
+          : 'Scanning likely relay addresses first…';
     });
+    final likelyHosts = [89, 1, 2, 10, 50, 100, 101, 119, 200, 254];
+    final likely = <String>{
+      for (final prefix in ['192.168.0', '192.168.1'])
+        for (final host in likelyHosts) 'http://$prefix.$host:8086'
+    }.toList();
     const prefixes = [
       '192.168.0',
       '192.168.1',
@@ -592,10 +606,26 @@ class _NoRelaySettingsState extends State<_NoRelaySettings> {
       '10.0.1'
     ];
     try {
+      for (final url in likely) {
+        if (!mounted) return;
+        setState(() => _scanStatus = 'Checking $url');
+        final found = await _probeRelay(url);
+        if (found != null) {
+          setState(() {
+            _candidate = found;
+            _scanning = false;
+            _scanStatus = 'Found local relay';
+          });
+          return;
+        }
+      }
       for (final prefix in prefixes) {
-        for (var start = 1; start <= 254; start += 24) {
+        for (var start = 1; start <= 254; start += 16) {
+          if (!mounted) return;
+          setState(() => _scanStatus =
+              'Scanning $prefix.$start-${(start + 15).clamp(1, 254)}');
           final batch = <Future<_LocalRelayCandidate?>>[];
-          for (var host = start; host < start + 24 && host <= 254; host++) {
+          for (var host = start; host < start + 16 && host <= 254; host++) {
             batch.add(_probeRelay('http://$prefix.$host:8086'));
           }
           _LocalRelayCandidate? found;
@@ -610,12 +640,19 @@ class _NoRelaySettingsState extends State<_NoRelaySettings> {
             setState(() {
               _candidate = found;
               _scanning = false;
+              _scanStatus = 'Found local relay';
             });
             return;
           }
         }
       }
-      if (mounted) setState(() => _scanError = 'No local relay found yet');
+      if (mounted) {
+        setState(() {
+          _scanError =
+              'No local relay found yet — retrying automatically every 12 seconds';
+          _scanStatus = 'Scan finished; waiting before retry';
+        });
+      }
     } finally {
       if (mounted) setState(() => _scanning = false);
     }
@@ -625,7 +662,7 @@ class _NoRelaySettingsState extends State<_NoRelaySettings> {
     try {
       final resp = await _client
           .get(Uri.parse('$baseUrl/pairing/info'))
-          .timeout(const Duration(milliseconds: 900));
+          .timeout(const Duration(milliseconds: 2500));
       if (resp.statusCode != 200) return null;
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       if (data['pairing_mode'] != 'local' || data['path'] != '/pairing/info') {
@@ -639,6 +676,35 @@ class _NoRelaySettingsState extends State<_NoRelaySettings> {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<void> _manualRelay(String raw) async {
+    final url = _normalizeRelayUrl(raw);
+    setState(() {
+      _scanning = true;
+      _scanError = null;
+      _scanStatus = 'Checking manual relay $url';
+    });
+    final found = await _probeRelay(url);
+    if (!mounted) return;
+    setState(() {
+      _scanning = false;
+      if (found != null) {
+        _candidate = found;
+        _scanStatus = 'Found manual relay';
+      } else {
+        _scanError = 'Manual relay did not respond to /pairing/info';
+        _scanStatus = 'Manual relay check failed';
+      }
+    });
+  }
+
+  String _normalizeRelayUrl(String raw) {
+    final value = raw.trim();
+    final withScheme = value.startsWith('http') ? value : 'http://$value';
+    final uri = Uri.tryParse(withScheme);
+    if (uri == null || uri.hasPort || uri.host.isEmpty) return withScheme;
+    return uri.replace(port: 8086).toString();
   }
 
   Future<void> _claimRelay() async {
@@ -681,7 +747,7 @@ class _NoRelaySettingsState extends State<_NoRelaySettings> {
                 ? 'Scanning for local relay…'
                 : 'Add local relay ${_candidate!.url}'),
             subtitle: Text(_candidate == null
-                ? (_scanError ?? 'Looking for a Dudenest relay on this network')
+                ? '${_scanError ?? 'Looking for a Dudenest relay on this network'}\n$_scanStatus'
                 : 'Relay ${_candidate!.relayID.isEmpty ? 'unregistered' : _candidate!.relayID} · ${_candidate!.status} · ${_candidate!.version}'),
             trailing: _candidate == null
                 ? TextButton(
@@ -737,8 +803,9 @@ class _NoRelaySettingsState extends State<_NoRelaySettings> {
                                     Navigator.pop(ctx, ctrl.text.trim()),
                                 child: const Text('Save')),
                           ]));
-              if (result != null && result.isNotEmpty)
-                widget.onRelayUrlChanged(result);
+              if (result != null && result.isNotEmpty) {
+                await _manualRelay(result);
+              }
             }),
       ]);
 }
