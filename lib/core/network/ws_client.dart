@@ -5,41 +5,55 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import 'remote_hand.dart' show RhTransport; // WsClient satisfies RemoteHand's transport contract
+import '../auth/auth_service.dart';
+import 'remote_hand.dart'
+    show RhTransport; // WsClient satisfies RemoteHand's transport contract
 
 /// Message types sent by relay via WebSocket.
 enum WsMessageType { authRequest, authDone, authError, ping, unknown }
 
 class WsMessage {
   final WsMessageType type;
-  final String? provider;   // "gdrive"|"mega"|"onedrive"
-  final String? requestId;  // correlates with /auth/exchange request_id
-  final String? email;      // set on auth_done
-  final String? error;      // set on auth_error
-  const WsMessage({required this.type, this.provider, this.requestId, this.email, this.error});
+  final String? provider; // "gdrive"|"mega"|"onedrive"
+  final String? requestId; // correlates with /auth/exchange request_id
+  final String? email; // set on auth_done
+  final String? error; // set on auth_error
+  const WsMessage(
+      {required this.type,
+      this.provider,
+      this.requestId,
+      this.email,
+      this.error});
 
   factory WsMessage.fromJson(Map<String, dynamic> j) {
     final t = switch (j['type'] as String? ?? '') {
       'auth_request' => WsMessageType.authRequest,
-      'auth_done'    => WsMessageType.authDone,
-      'auth_error'   => WsMessageType.authError,
-      'ping'         => WsMessageType.ping,
-      _              => WsMessageType.unknown,
+      'auth_done' => WsMessageType.authDone,
+      'auth_error' => WsMessageType.authError,
+      'ping' => WsMessageType.ping,
+      _ => WsMessageType.unknown,
     };
-    return WsMessage(type: t, provider: j['provider'] as String?, requestId: j['request_id'] as String?, email: j['email'] as String?, error: j['error'] as String?);
+    return WsMessage(
+        type: t,
+        provider: j['provider'] as String?,
+        requestId: j['request_id'] as String?,
+        email: j['email'] as String?,
+        error: j['error'] as String?);
   }
 }
 
 /// Persistent WebSocket connection to relay with auto-reconnect.
 class WsClient implements RhTransport {
-  final String baseUrl; // e.g. "https://relay.dudenest.com" or "http://10.71.0.1:8086"
+  final String
+      baseUrl; // e.g. "https://relay.dudenest.com" or "http://10.71.0.1:8086"
+  final String? relayToken;
   WebSocketChannel? _channel;
   final _ctrl = StreamController<WsMessage>.broadcast();
   final _raw = StreamController<Map<String, dynamic>>.broadcast();
   bool _disposed = false;
   Duration _retryDelay = const Duration(seconds: 3);
 
-  WsClient(this.baseUrl);
+  WsClient(this.baseUrl, {this.relayToken});
 
   /// Stream of typed auth_* messages received from relay.
   Stream<WsMessage> get messages => _ctrl.stream;
@@ -56,27 +70,44 @@ class WsClient implements RhTransport {
   /// Opens the WebSocket connection. Auto-reconnects on disconnect.
   void connect() {
     if (_disposed) return;
-    final wsUrl = baseUrl.replaceFirst(RegExp(r'^https?'), baseUrl.startsWith('https') ? 'wss' : 'ws') + '/ws';
+    final raw = baseUrl.replaceFirst(
+            RegExp(r'^https?'), baseUrl.startsWith('https') ? 'wss' : 'ws') +
+        '/ws';
+    final uri = Uri.parse(raw);
+    final q = Map<String, String>.from(uri.queryParameters);
+    final token = AuthService().token;
+    if (token != null) q['token'] = token;
+    if (relayToken != null) q['relay_token'] = relayToken!;
+    final wsUrl = uri.replace(queryParameters: q.isEmpty ? null : q).toString();
     try {
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-      _retryDelay = const Duration(seconds: 3); // reset backoff on successful connect
+      _retryDelay =
+          const Duration(seconds: 3); // reset backoff on successful connect
       _channel!.stream.listen(
         (data) {
           if (_disposed) return;
           try {
             final json = jsonDecode(data as String) as Map<String, dynamic>;
-            _raw.add(json);                       // Remote-Hand consumes rh_* here
-            _ctrl.add(WsMessage.fromJson(json));  // typed auth_* stream
+            _raw.add(json); // Remote-Hand consumes rh_* here
+            _ctrl.add(WsMessage.fromJson(json)); // typed auth_* stream
           } catch (_) {} // ignore malformed messages
         },
-        onDone: () { if (!_disposed) Future.delayed(_retryDelay, connect); },
-        onError: (_) { if (!_disposed) Future.delayed(_retryDelay, connect); },
+        onDone: () {
+          if (!_disposed) Future.delayed(_retryDelay, connect);
+        },
+        onError: (_) {
+          if (!_disposed) Future.delayed(_retryDelay, connect);
+        },
         cancelOnError: true,
       );
     } catch (_) {
       if (!_disposed) Future.delayed(_retryDelay, connect);
       final nextDelay = _retryDelay * 2;
-      _retryDelay = nextDelay > const Duration(seconds: 30) ? const Duration(seconds: 30) : (nextDelay < const Duration(seconds: 3) ? const Duration(seconds: 3) : nextDelay);
+      _retryDelay = nextDelay > const Duration(seconds: 30)
+          ? const Duration(seconds: 30)
+          : (nextDelay < const Duration(seconds: 3)
+              ? const Duration(seconds: 3)
+              : nextDelay);
     }
   }
 

@@ -376,7 +376,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
     setState(() { _rhError = null; });
     try {
       final sid = await widget.relay.startRemoteHand(_selectedProvider);
-      final ws = WsClient(widget.relay.baseUrl)..connect();
+      final ws = WsClient(widget.relay.baseUrl, relayToken: widget.relay.relayToken)..connect();
       setState(() { _rhWs = ws; _remoteHand = RemoteHand(ws: ws, sessionId: sid,
         httpSubmit: widget.relay.sendRemoteHandInput); }); // reliable HTTP input (#3), not lossy ws
     } catch (e) {
@@ -395,7 +395,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
     if (rh == null) return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
     return ListView(controller: sc, children: [RemoteHandForm(
       controller: rh,
-      resolveTakeoverUrl: (u) => u.startsWith('http') ? u : Uri.parse(widget.relay.baseUrl).resolve(u).toString(),
+      resolveTakeoverUrl: (u) => widget.relay.withRelayAuth(u.startsWith('http') ? u : Uri.parse(widget.relay.baseUrl).resolve(u).toString()),
       onAddNext: _restartRemoteHand,               // fresh relay session for the next account
       onFinish: () => Navigator.of(context).pop(),  // close sheet → parent reloads accounts
     )]);

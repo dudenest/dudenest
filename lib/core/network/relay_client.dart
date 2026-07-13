@@ -35,11 +35,21 @@ class RelayClient {
       };
 
   // WebSocket URL: ws://host:port/ws (or wss:// for https relay)
-  String get wsUrl =>
-      baseUrl
+  String get wsUrl => _withRelayAuth(baseUrl
           .replaceFirst('http://', 'ws://')
           .replaceFirst('https://', 'wss://') +
-      '/ws';
+      '/ws');
+
+  String withRelayAuth(String url) => _withRelayAuth(url);
+
+  String _withRelayAuth(String url) {
+    final token = AuthService().token;
+    final uri = Uri.parse(url);
+    final q = Map<String, String>.from(uri.queryParameters);
+    if (token != null) q['token'] = token;
+    if (relayToken != null) q['relay_token'] = relayToken!;
+    return uri.replace(queryParameters: q.isEmpty ? null : q).toString();
+  }
 
   dynamic _processResponse(http.Response resp, String context) {
     // s329 #4: accept both 200 (sync OK) and 202 Accepted (fire-and-forget async). Backend uses
