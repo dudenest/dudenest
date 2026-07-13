@@ -80,7 +80,8 @@ void main() {
     expect(find.text('Account connected'), findsOneWidget);
   });
 
-  testWidgets('success shows account email + Add Next / Finish buttons', (tester) async {
+  testWidgets('success shows account email + Add Next / Finish buttons',
+      (tester) async {
     final t = FakeTransport();
     final rh = RemoteHand(ws: t, sessionId: 's1');
     var addNext = 0, finish = 0;
@@ -90,10 +91,15 @@ void main() {
                 controller: rh,
                 onAddNext: () => addNext++,
                 onFinish: () => finish++))));
-    t.emit({'type': 'auth_done', 'provider': 'gdrive', 'email': 'demo@example.com'});
+    t.emit({
+      'type': 'auth_done',
+      'provider': 'gdrive',
+      'email': 'demo@example.com'
+    });
     await tester.pump();
     expect(find.text('Account connected'), findsOneWidget);
-    expect(find.text('demo@example.com'), findsOneWidget); // shows which account
+    expect(
+        find.text('demo@example.com'), findsOneWidget); // shows which account
     await tester.tap(find.text('Add Next Account'));
     await tester.tap(find.text('Finish'));
     expect(addNext, 1);
@@ -105,7 +111,12 @@ void main() {
     final rh = RemoteHand(ws: t, sessionId: 's1');
     await tester.pumpWidget(
         MaterialApp(home: Scaffold(body: RemoteHandForm(controller: rh))));
-    t.emit({'type': 'rh_state', 'session_id': 's1', 'state': 'working', 'message': 'submitting email'});
+    t.emit({
+      'type': 'rh_state',
+      'session_id': 's1',
+      'state': 'working',
+      'message': 'submitting email'
+    });
     await tester.pump();
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     expect(find.text('submitting email'), findsOneWidget);
@@ -245,5 +256,28 @@ void main() {
     expect(t.sent.single['step'], 'email');
     expect(t.sent.single['values'], {'login': 'demo@example.com'});
     expect(t.sent.single.containsKey('sealed'), isTrue);
+  });
+
+  testWidgets('renders human-takeover action when relay provides form-view URL',
+      (tester) async {
+    final t = FakeTransport();
+    final rh = RemoteHand(ws: t, sessionId: 's1');
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: RemoteHandForm(
+      controller: rh,
+      embedTakeoverWebView: false,
+      resolveTakeoverUrl: (u) => 'https://relay.example$u',
+    ))));
+    t.emit({
+      'type': 'rh_state',
+      'session_id': 's1',
+      'state': 'error',
+      'message': 'Google shows captcha',
+      'takeover_url': '/vnc/dudenest-form.html?session=s1'
+    });
+    await tester.pump();
+    expect(find.text('Human takeover needed'), findsOneWidget);
+    expect(find.text('Open live Google screen'), findsOneWidget);
   });
 }

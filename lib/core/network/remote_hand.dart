@@ -53,12 +53,14 @@ class RhPrompt {
   final List<RhField> fields;
   final String? imageB64;
   final String level;
+  final String? takeoverUrl;
 
   const RhPrompt(
       {required this.step,
       required this.title,
       required this.fields,
       this.imageB64,
+      this.takeoverUrl,
       this.level = 'info'});
 
   factory RhPrompt.fromJson(Map<String, dynamic> j) => RhPrompt(
@@ -68,6 +70,7 @@ class RhPrompt {
             .map((f) => RhField.fromJson(f as Map<String, dynamic>))
             .toList(),
         imageB64: j['image'] as String?,
+        takeoverUrl: j['takeover_url'] as String?,
         level: j['level'] as String? ?? 'info',
       );
 
@@ -91,10 +94,12 @@ class RemoteHand extends ChangeNotifier {
   RhPrompt? _prompt;
   RhStatus _status = RhStatus.connecting;
   String _message = '';
+  String? _takeoverUrl;
 
   RhPrompt? get prompt => _prompt;
   RhStatus get status => _status;
   String get message => _message;
+  String? get takeoverUrl => _takeoverUrl ?? _prompt?.takeoverUrl;
   bool get ready => _pubkey != null;
 
   RemoteHand({required this.ws, required this.sessionId, this.httpSubmit}) {
@@ -108,8 +113,8 @@ class RemoteHand extends ChangeNotifier {
     // Once authorization has succeeded the flow is over. Ignore any late/replayed prompt
     // or state — the relay re-sends the last prompt to a reconnecting ws, which would
     // otherwise clobber the 'Account connected' banner back into the verification form.
-    if (_status == RhStatus.success && (type == 'rh_prompt' || type == 'rh_state'))
-      return;
+    if (_status == RhStatus.success &&
+        (type == 'rh_prompt' || type == 'rh_state')) return;
     switch (type) {
       case 'rh_hello':
         _pubkey = j['relay_pubkey'] as String?;
@@ -117,6 +122,7 @@ class RemoteHand extends ChangeNotifier {
         break;
       case 'rh_prompt':
         _prompt = RhPrompt.fromJson(j);
+        _takeoverUrl = _prompt?.takeoverUrl;
         _status = RhStatus.needInput;
         notifyListeners();
         break;
@@ -129,6 +135,7 @@ class RemoteHand extends ChangeNotifier {
           _ => _status,
         };
         _message = j['message'] as String? ?? '';
+        _takeoverUrl = j['takeover_url'] as String?;
         notifyListeners();
         break;
       case 'auth_done':

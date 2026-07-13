@@ -5,18 +5,30 @@
 // Secrets are sealed inside RemoteHand.submit before leaving the device.
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/network/remote_hand.dart';
 import '../../core/network/rh_validate.dart';
 
 class RemoteHandForm extends StatefulWidget {
   final RemoteHand controller;
-  final VoidCallback? onAddNext; // success → start another account (fresh relay session)
-  final VoidCallback? onFinish; // success → close and return to the accounts list
+  final VoidCallback?
+      onAddNext; // success → start another account (fresh relay session)
+  final VoidCallback?
+      onFinish; // success → close and return to the accounts list
+  final String Function(String url)? resolveTakeoverUrl;
+  final bool embedTakeoverWebView;
   const RemoteHandForm(
-      {super.key, required this.controller, this.onAddNext, this.onFinish});
+      {super.key,
+      required this.controller,
+      this.onAddNext,
+      this.onFinish,
+      this.resolveTakeoverUrl,
+      this.embedTakeoverWebView = true});
 
   @override
   State<RemoteHandForm> createState() => _RemoteHandFormState();
@@ -24,6 +36,8 @@ class RemoteHandForm extends StatefulWidget {
 
 class _RemoteHandFormState extends State<RemoteHandForm> {
   final _fieldCtrls = <String, TextEditingController>{};
+  WebViewController? _takeoverCtrl;
+  String? _takeoverLoaded;
 
   @override
   void dispose() {
@@ -55,9 +69,12 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
           case RhStatus.success:
             return _successView(c.message);
           case RhStatus.error:
+            if (c.takeoverUrl != null) return _takeoverView(c, true);
             return _banner(
                 Icons.error, Colors.red, 'Could not sign in', c.message);
           case RhStatus.working:
+            if (c.takeoverUrl != null) return _takeoverView(c, false);
+            return _workingView(c.message);
           case RhStatus.connecting:
             return _workingView(c.message);
           case RhStatus.needInput:
@@ -102,6 +119,52 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
         ],
       ),
     );
+  }
+
+  String _resolvedTakeoverUrl(String url) =>
+      widget.resolveTakeoverUrl?.call(url) ?? url;
+
+  Widget _takeoverView(RemoteHand c, bool isError) {
+    final url = _resolvedTakeoverUrl(c.takeoverUrl!);
+    if (!kIsWeb && widget.embedTakeoverWebView && _takeoverLoaded != url) {
+      final ctrl = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..loadRequest(Uri.parse(url));
+      _takeoverCtrl = ctrl;
+      _takeoverLoaded = url;
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          child: Column(children: [
+            Icon(isError ? Icons.warning_amber : Icons.visibility,
+                color: isError ? Colors.orange : Colors.blue, size: 34),
+            const SizedBox(height: 8),
+            Text(
+                isError
+                    ? 'Human takeover needed'
+                    : 'Google needs your attention',
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            if (c.message.isNotEmpty)
+              Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(c.message,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey))),
+          ])),
+      if (!kIsWeb && widget.embedTakeoverWebView && _takeoverCtrl != null)
+        SizedBox(height: 520, child: WebViewWidget(controller: _takeoverCtrl!))
+      else
+        Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: FilledButton.icon(
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open live Google screen'),
+              onPressed: () => launchUrl(Uri.parse(url),
+                  mode: LaunchMode.externalApplication),
+            )),
+    ]);
   }
 
   // All visible fields pass client-side format validation → Continue enabled.
@@ -173,8 +236,7 @@ class _RemoteHandFormState extends State<RemoteHandForm> {
               const SizedBox(height: 12),
               const Text('Account connected',
                   textAlign: TextAlign.center,
-                  style:
-                      TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               if (email.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),

@@ -391,6 +391,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
     if (rh == null) return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
     return ListView(controller: sc, children: [RemoteHandForm(
       controller: rh,
+      resolveTakeoverUrl: (u) => u.startsWith('http') ? u : Uri.parse(widget.relay.baseUrl).resolve(u).toString(),
       onAddNext: _restartRemoteHand,               // fresh relay session for the next account
       onFinish: () => Navigator.of(context).pop(),  // close sheet → parent reloads accounts
     )]);

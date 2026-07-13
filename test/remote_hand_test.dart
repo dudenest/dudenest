@@ -53,6 +53,26 @@ void main() {
           {'step': 'email', 'title': 'Wrong', 'level': 'warning'});
       expect(p.isWarning, isTrue);
     });
+
+    test('RhPrompt and rh_state parse takeover URL', () async {
+      final p = RhPrompt.fromJson({
+        'step': 'captcha_live',
+        'title': 'Take over',
+        'takeover_url': '/vnc/dudenest-form.html'
+      });
+      expect(p.takeoverUrl, '/vnc/dudenest-form.html');
+      final t = FakeTransport();
+      final rh = RemoteHand(ws: t, sessionId: 's1');
+      t.emit({
+        'type': 'rh_state',
+        'session_id': 's1',
+        'state': 'error',
+        'message': 'Google shows',
+        'takeover_url': '/vnc/dudenest-form.html'
+      });
+      await pumpEventQueue();
+      expect(rh.takeoverUrl, '/vnc/dudenest-form.html');
+    });
   });
 
   group('sealed_box interop shape (PyNaCl-compatible)', () {
@@ -154,11 +174,16 @@ void main() {
       expect(rh.message, 'demo@example.com');
     });
 
-    test('late replayed prompt after success is ignored (banner keeps the account)',
+    test(
+        'late replayed prompt after success is ignored (banner keeps the account)',
         () async {
       final t = FakeTransport();
       final rh = RemoteHand(ws: t, sessionId: 's1');
-      t.emit({'type': 'auth_done', 'provider': 'gdrive', 'email': 'demo@example.com'});
+      t.emit({
+        'type': 'auth_done',
+        'provider': 'gdrive',
+        'email': 'demo@example.com'
+      });
       await pumpEventQueue();
       expect(rh.status, RhStatus.success);
       // relay replays the last prompt to a reconnecting ws — must NOT revert the banner
