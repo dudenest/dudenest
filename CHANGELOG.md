@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Local relay discovery and claim.** When an account has no assigned relay, Settings now scans common LAN subnets for `GET /pairing/info`; when a local relay is found the `Add local relay` row becomes a `Claim` action that pairs it through `api.dudenest.com/api/v1/relay/discover` and refreshes the user's relay list.
 - **Remote-Hand human takeover embed.** When the relay reports a serious or unknown Google screen with `takeover_url`, the RemoteHand form shows a live form-only noVNC view on mobile (or an external open button on web/desktop). The URL points to `/vnc/dudenest-form.html?...`, which crops the relay browser to the Google form without resizing the browser used by OCR/FSM.
 - **No-relay preview mode for new users.** Accounts without an assigned relay now enter the normal app shell: `/Photos` shows a scrollable grouped placeholder gallery, Upload opens the file picker immediately from the tab/action, and Settings → Relay carries the relay warning plus install/manual actions.
 

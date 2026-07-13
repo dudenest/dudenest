@@ -210,7 +210,8 @@ class _HomeScreenState extends State<HomeScreen> {
           relay: hasRelay ? _relay : null,
           relayUrl: _relayUrl,
           relayError: _relayError,
-          onRelayUrlChanged: setRelayUrl),
+          onRelayUrlChanged: setRelayUrl,
+          onRelayClaimed: _loadRelayUrl),
     ];
     return Scaffold(
       body: screens[
@@ -326,12 +327,14 @@ class SettingsScreen extends StatelessWidget {
   final String? relayUrl;
   final String? relayError;
   final void Function(String) onRelayUrlChanged;
+  final Future<void> Function() onRelayClaimed;
   const SettingsScreen(
       {super.key,
       required this.relay,
       required this.relayUrl,
       this.relayError,
-      required this.onRelayUrlChanged});
+      required this.onRelayUrlChanged,
+      required this.onRelayClaimed});
   @override
   Widget build(BuildContext context) {
     final app = DudenestApp.of(context);
@@ -417,7 +420,9 @@ class SettingsScreen extends StatelessWidget {
               relayUrl: relayUrl!, onRelayUrlChanged: onRelayUrlChanged)
         else
           _NoRelaySettings(
-              relayError: relayError, onRelayUrlChanged: onRelayUrlChanged),
+              relayError: relayError,
+              onRelayUrlChanged: onRelayUrlChanged,
+              onRelayClaimed: onRelayClaimed),
         const Divider(),
         const ListTile(
             title:
@@ -529,23 +534,162 @@ class _RelayUrlTile extends StatelessWidget {
       });
 }
 
-class _NoRelaySettings extends StatelessWidget {
+class _LocalRelayCandidate {
+  final String url;
+  final String relayID;
+  final String status;
+  final String version;
+  const _LocalRelayCandidate(
+      {required this.url,
+      required this.relayID,
+      required this.status,
+      required this.version});
+}
+
+class _NoRelaySettings extends StatefulWidget {
   final String? relayError;
   final void Function(String) onRelayUrlChanged;
+  final Future<void> Function() onRelayClaimed;
   const _NoRelaySettings(
-      {required this.relayError, required this.onRelayUrlChanged});
+      {required this.relayError,
+      required this.onRelayUrlChanged,
+      required this.onRelayClaimed});
+  @override
+  State<_NoRelaySettings> createState() => _NoRelaySettingsState();
+}
+
+class _NoRelaySettingsState extends State<_NoRelaySettings> {
+  final _client = http.Client();
+  _LocalRelayCandidate? _candidate;
+  bool _scanning = false;
+  bool _claiming = false;
+  String? _scanError;
+
+  @override
+  void initState() {
+    super.initState();
+    _scanLocalRelays();
+  }
+
+  @override
+  void dispose() {
+    _client.close();
+    super.dispose();
+  }
+
+  Future<void> _scanLocalRelays() async {
+    if (_scanning) return;
+    setState(() {
+      _scanning = true;
+      _scanError = null;
+    });
+    const prefixes = [
+      '192.168.0',
+      '192.168.1',
+      '192.168.2',
+      '192.168.86',
+      '10.0.0',
+      '10.0.1'
+    ];
+    try {
+      for (final prefix in prefixes) {
+        for (var start = 1; start <= 254; start += 24) {
+          final batch = <Future<_LocalRelayCandidate?>>[];
+          for (var host = start; host < start + 24 && host <= 254; host++) {
+            batch.add(_probeRelay('http://$prefix.$host:8086'));
+          }
+          _LocalRelayCandidate? found;
+          for (final result in await Future.wait(batch)) {
+            if (result != null) {
+              found = result;
+              break;
+            }
+          }
+          if (!mounted) return;
+          if (found != null) {
+            setState(() {
+              _candidate = found;
+              _scanning = false;
+            });
+            return;
+          }
+        }
+      }
+      if (mounted) setState(() => _scanError = 'No local relay found yet');
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
+  Future<_LocalRelayCandidate?> _probeRelay(String baseUrl) async {
+    try {
+      final resp = await _client
+          .get(Uri.parse('$baseUrl/pairing/info'))
+          .timeout(const Duration(milliseconds: 900));
+      if (resp.statusCode != 200) return null;
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (data['pairing_mode'] != 'local' || data['path'] != '/pairing/info') {
+        return null;
+      }
+      return _LocalRelayCandidate(
+          url: baseUrl,
+          relayID: data['relay_id'] as String? ?? '',
+          status: data['status'] as String? ?? 'unknown',
+          version: data['version'] as String? ?? 'unknown');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _claimRelay() async {
+    final token = AuthService().token;
+    if (token == null || _candidate == null || _claiming) return;
+    setState(() => _claiming = true);
+    try {
+      final resp = await http.get(
+        Uri.parse('https://api.dudenest.com/api/v1/relay/discover'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (resp.statusCode != 200) {
+        throw 'Claim failed (HTTP ${resp.statusCode}): ${resp.body}';
+      }
+      await widget.onRelayClaimed();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Relay paired with this account')));
+    } catch (e) {
+      if (mounted) setState(() => _scanError = e.toString());
+    } finally {
+      if (mounted) setState(() => _claiming = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Column(children: [
         ListTile(
             leading: const Icon(Icons.warning_amber, color: Colors.orange),
             title: const Text('No relay assigned to this account'),
-            subtitle: Text(relayError ?? 'Cannot load relay')),
-        const ListTile(
-            leading: Icon(Icons.router_outlined),
-            title: Text('Add local relay IP 192.168.x.x'),
-            subtitle:
-                Text('Disabled until local relay discovery finds a candidate'),
-            enabled: false),
+            subtitle: Text(widget.relayError ?? 'Cannot load relay')),
+        ListTile(
+            leading: _scanning
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.router_outlined),
+            title: Text(_candidate == null
+                ? 'Scanning for local relay…'
+                : 'Add local relay ${_candidate!.url}'),
+            subtitle: Text(_candidate == null
+                ? (_scanError ?? 'Looking for a Dudenest relay on this network')
+                : 'Relay ${_candidate!.relayID.isEmpty ? 'unregistered' : _candidate!.relayID} · ${_candidate!.status} · ${_candidate!.version}'),
+            trailing: _candidate == null
+                ? TextButton(
+                    onPressed: _scanning ? null : _scanLocalRelays,
+                    child: const Text('Scan'))
+                : FilledButton(
+                    onPressed: _claiming ? null : _claimRelay,
+                    child: Text(_claiming ? 'Pairing…' : 'Claim'))),
         const ListTile(
             leading: Icon(Icons.cloud_outlined),
             title: Text('Add remote relay'),
@@ -594,7 +738,7 @@ class _NoRelaySettings extends StatelessWidget {
                                 child: const Text('Save')),
                           ]));
               if (result != null && result.isNotEmpty)
-                onRelayUrlChanged(result);
+                widget.onRelayUrlChanged(result);
             }),
       ]);
 }
