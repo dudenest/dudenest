@@ -103,6 +103,26 @@ void main() {
     });
   });
 
+  group('RelayClient.endRemoteHand', () {
+    test('posts session_id to oauth3 end', () async {
+      final c = _client((req) async {
+        expect(req.method, 'POST');
+        expect(req.url.path, '/relay/oauth3/end');
+        expect(jsonDecode(req.body)['session_id'], 's1');
+        return http.Response('', 204);
+      });
+      await expectLater(c.endRemoteHand('s1'), completes);
+    });
+
+    test('throws RelayException on non-success', () async {
+      final c = _client((req) async => http.Response('missing', 404));
+      expect(
+          () => c.endRemoteHand('missing'),
+          throwsA(isA<RelayException>()
+              .having((e) => e.statusCode, 'statusCode', 404)));
+    });
+  });
+
   group('RelayClient.downloadFile', () {
     test('returns bytes on success', () async {
       final expected = Uint8List.fromList([1, 2, 3, 4]);
@@ -176,7 +196,8 @@ void main() {
               .having((e) => e.statusCode, 'statusCode', 400)));
     });
 
-    test('accepts 202 with empty body (no content-type) — returns empty map', () async {
+    test('accepts 202 with empty body (no content-type) — returns empty map',
+        () async {
       final c = _client((req) async => http.Response('', 202));
       // Server may legitimately respond 202 with no body — must not throw "Expected JSON".
       final result = await c.refreshAllAdminQuota();

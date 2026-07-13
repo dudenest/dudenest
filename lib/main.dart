@@ -94,11 +94,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0; // 0=Files, 1=Upload, 2=Settings
-  static const _defaultRelayUrl = 'https://relay.dudenest.com';
   late RelayClient _relay;
-  late String _relayUrl;
-  String?
-      _relayToken; // Layer 3: short-lived HMAC from API, kept in memory only (not persisted)
+  String? _relayUrl;
+  String? _relayError;
   Timer?
       _tokenRefreshTimer; // periodic relay_token refresh (token TTL=1h, refresh every 50min)
   bool _relayReady =
@@ -107,8 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _relayUrl = _defaultRelayUrl;
-    _relay = RelayClient(_relayUrl);
+    _relay = RelayClient('');
     // Await initial token fetch before rendering RelayScreen to prevent cold-start 403
     _loadRelayUrl().then((_) {
       if (mounted) setState(() => _relayReady = true);
@@ -124,11 +121,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // _loadRelayUrl resolves the relay URL and relay_token for the current user.
-  // Priority order:
-  //   1. API (GET /api/v1/relays) — server-authoritative, per-user; returns relay_url + relay_token
-  //   2. SharedPreferences 'relay_url' — local override (dev/custom setups, or API unavailable)
-  //   3. _defaultRelayUrl — hardcoded fallback (no relay_token in this case)
+  // _loadRelayUrl resolves the relay URL and relay_token for the current authenticated user.
+  // Production is server-authoritative: no hardcoded relay.dudenest.com fallback and no stale prefs.
   Future<void> _loadRelayUrl() async {
     final info = await _fetchRelayInfoFromApi();
     if (info != null) {
@@ -138,24 +132,20 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted)
         setState(() {
           _relayUrl = url;
-          _relayToken = token;
+          _relayError = null;
           _relay = RelayClient(url, relayToken: token);
         });
       return;
     }
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('relay_url') ?? _defaultRelayUrl;
-    if (saved != _relayUrl && mounted) {
+    if (mounted)
       setState(() {
-        _relayUrl = saved;
-        _relayToken = null;
-        _relay = RelayClient(saved);
+        _relayUrl = null;
+        _relayError ??= 'No relay assigned to this account';
       });
-    }
   }
 
   // _fetchRelayInfoFromApi calls backend GET /api/v1/relays and returns relay_url + relay_token
-  // for the first relay registered for the current user. Returns null on error or empty list.
+  // for the first relay registered for the current user. Returns null on empty list, records error on failure.
   // relay_token is a short-lived HMAC (1h) signed by backup using relay_secret — Layer 3 security.
   Future<Map<String, String?>?> _fetchRelayInfoFromApi() async {
     final token = AuthService().token;
@@ -165,18 +155,28 @@ class _HomeScreenState extends State<HomeScreen> {
         Uri.parse('https://api.dudenest.com/api/v1/relays'),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 5));
-      if (resp.statusCode != 200) return null;
+      if (resp.statusCode != 200) {
+        _relayError = 'Cannot load relay (HTTP ${resp.statusCode})';
+        return null;
+      }
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       final relays = data['relays'] as List?;
-      if (relays == null || relays.isEmpty) return null;
+      if (relays == null || relays.isEmpty) {
+        _relayError = 'No relay assigned to this account';
+        return null;
+      }
       final first = relays.first as Map<String, dynamic>;
       final relayUrl = first['relay_url'] as String?;
-      if (relayUrl == null || relayUrl.isEmpty) return null;
+      if (relayUrl == null || relayUrl.isEmpty) {
+        _relayError = 'No relay assigned to this account';
+        return null;
+      }
       return {
         'relay_url': relayUrl,
         'relay_token': first['relay_token'] as String?
       };
     } catch (_) {
+      _relayError = 'Cannot load relay';
       return null;
     }
   }
@@ -184,13 +184,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void setRelayUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('relay_url', url);
-    // Manual relay URL override clears relay_token — user manages this relay directly
-    if (mounted)
-      setState(() {
-        _relayUrl = url;
-        _relayToken = null;
-        _relay = RelayClient(url);
-      });
+    // Dev/custom override is stored for local experiments only; authenticated production users still use API relay_url + relay_token.
+    if (mounted) setState(() {});
   }
 
   @override
@@ -198,15 +193,19 @@ class _HomeScreenState extends State<HomeScreen> {
     // Show loading spinner until relay token is ready — prevents cold-start 403 on Files tab
     if (!_relayReady)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_relayUrl == null)
+      return _RelayUnavailableScreen(
+          message: _relayError ?? 'Cannot load relay', onRetry: _loadRelayUrl);
     final screens = [
       RelayScreen(relay: _relay, folder: 'photos'), // P3: media-only tab
       RelayScreen(relay: _relay, folder: 'files'), // P3: non-media tab
       UploadScreen(relay: _relay),
       SettingsScreen(
-          relay: _relay, relayUrl: _relayUrl, onRelayUrlChanged: setRelayUrl),
+          relay: _relay, relayUrl: _relayUrl!, onRelayUrlChanged: setRelayUrl),
     ];
     return Scaffold(
-      body: screens[_tab], // demo indicator is the pulsing DEMO badge in the Photos header (relay_screen)
+      body: screens[
+          _tab], // demo indicator is the pulsing DEMO badge in the Photos header (relay_screen)
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) {
@@ -224,6 +223,35 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+class _RelayUnavailableScreen extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _RelayUnavailableScreen({required this.message, required this.onRetry});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      body: Center(
+          child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.router_outlined,
+                    size: 56, color: Colors.orange),
+                const SizedBox(height: 16),
+                Text(message,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                const Text(
+                    'This account does not have a server-authoritative relay URL and token. Please contact support or assign a relay in the backend.',
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry')),
+              ]))));
 }
 
 class SettingsScreen extends StatelessWidget {
@@ -260,6 +288,9 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Sign out', style: TextStyle(color: Colors.red)),
             onTap: () async {
               await AuthService().signOut();
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove(
+                  'relay_url'); // prevent next account from inheriting a stale dev/custom URL
               app.refresh();
             },
           ),
@@ -309,7 +340,7 @@ class SettingsScreen extends StatelessWidget {
                 Text('Relay', style: TextStyle(fontWeight: FontWeight.bold))),
         ListTile(
           leading: const Icon(Icons.router),
-          title: const Text('Relay URL'),
+          title: const Text('Relay URL (dev/custom override)'),
           subtitle: Text(relayUrl,
               style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
           trailing: const Icon(Icons.edit),
@@ -318,11 +349,13 @@ class SettingsScreen extends StatelessWidget {
             final result = await showDialog<String>(
               context: context,
               builder: (ctx) => AlertDialog(
-                title: const Text('Set Relay URL'),
+                title: const Text('Set dev/custom Relay URL'),
                 content: TextField(
                     controller: ctrl,
                     decoration: const InputDecoration(
-                        hintText: 'https://relay.dudenest.com')),
+                        helperText:
+                            'Logged-in production users use the server-assigned relay URL and token.',
+                        hintText: 'http://localhost:8086')),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(ctx),
@@ -474,9 +507,13 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
         SwitchListTile.adaptive(
           dense: true,
           title: const Text('Auto-resize with browser window'),
-          subtitle: const Text('Tiles scale proportionally to viewport (recommended)'),
+          subtitle: const Text(
+              'Tiles scale proportionally to viewport (recommended)'),
           value: s.autoResizeRowHeight,
-          onChanged: (v) { s.autoResizeRowHeight = v; _save(); },
+          onChanged: (v) {
+            s.autoResizeRowHeight = v;
+            _save();
+          },
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -489,10 +526,15 @@ class _GallerySettingsTileState extends State<_GallerySettingsTile> {
           ]),
         ),
         Slider(
-          value: s.justifiedRowHeight.clamp(GallerySettings.minRowHeight, GallerySettings.maxRowHeight),
-          min: GallerySettings.minRowHeight, // 20 — user request 2026-05-30 ("min 20px")
+          value: s.justifiedRowHeight.clamp(
+              GallerySettings.minRowHeight, GallerySettings.maxRowHeight),
+          min: GallerySettings
+              .minRowHeight, // 20 — user request 2026-05-30 ("min 20px")
           max: GallerySettings.maxRowHeight, // 400 — extended from 320
-          divisions: ((GallerySettings.maxRowHeight - GallerySettings.minRowHeight) / 10).round(),
+          divisions:
+              ((GallerySettings.maxRowHeight - GallerySettings.minRowHeight) /
+                      10)
+                  .round(),
           label: '${s.justifiedRowHeight.round()}px',
           onChanged: (v) {
             s.justifiedRowHeight = v;

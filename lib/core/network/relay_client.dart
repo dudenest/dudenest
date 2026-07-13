@@ -124,7 +124,8 @@ class RelayClient {
       headers: {..._headers, 'Content-Type': 'application/json'},
       body: jsonEncode({'provider': provider}),
     );
-    final j = _processResponse(resp, 'POST /relay/oauth3/start') as Map<String, dynamic>;
+    final j = _processResponse(resp, 'POST /relay/oauth3/start')
+        as Map<String, dynamic>;
     return j['session_id'] as String;
   }
 
@@ -139,6 +140,21 @@ class RelayClient {
     );
     if (resp.statusCode != 204) {
       throw RelayException('POST /relay/oauth3/input: HTTP ${resp.statusCode}',
+          statusCode: resp.statusCode, body: resp.body);
+    }
+  }
+
+  // POST /relay/oauth3/end — cancel/cleanup a Relay-assisted sidecar session when the user leaves the flow.
+  Future<void> endRemoteHand(String sessionId) async {
+    final resp = await _http.post(
+      Uri.parse('$baseUrl/relay/oauth3/end'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({'session_id': sessionId}),
+    );
+    if (resp.statusCode != 200 &&
+        resp.statusCode != 202 &&
+        resp.statusCode != 204) {
+      throw RelayException('POST /relay/oauth3/end: HTTP ${resp.statusCode}',
           statusCode: resp.statusCode, body: resp.body);
     }
   }

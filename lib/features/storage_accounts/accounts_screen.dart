@@ -45,12 +45,14 @@ class _AccountsScreenState extends State<AccountsScreen> {
       final results = await Future.wait([
         widget.relay.getProviders(),
         widget.relay.getAdminAccounts().catchError((e) {
+          if (_isRelayAuthFailure(e)) throw e;
           // /admin/accounts is Phase α+ — older relays return 404. Tolerate gracefully so
           // the UI degrades to legacy behavior instead of erroring out entirely.
           debugPrint('AccountsScreen: /admin/accounts unavailable (older relay?): $e');
           return <String, dynamic>{'accounts': <dynamic>[], 'policy': <String, dynamic>{}};
         }),
         widget.relay.getScanStatus().catchError((e) { // s320 Phase 1: tolerate older relays without /admin/scan
+          if (_isRelayAuthFailure(e)) throw e;
           debugPrint('AccountsScreen: /admin/scan/status unavailable: $e');
           return <String, dynamic>{};
         }),
@@ -80,6 +82,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
       setState(() { _error = e; _loading = false; });
     }
   }
+
+  bool _isRelayAuthFailure(Object e) => e is RelayException && (e.statusCode == 401 || e.statusCode == 403);
 
   // s320 Phase 1: lookup scan state for a provider — matches on "type:email" provider ID.
   Map<String, dynamic>? _scanFor(Map<String, dynamic> provider) {
@@ -363,7 +367,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
   @override
   void initState() { super.initState(); _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true); _pulseAnim = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut)); }
   @override
-  void dispose() { _pulseCtrl.dispose(); _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); _pollTimer?.cancel(); _remoteHand?.dispose(); _rhWs?.dispose(); super.dispose(); }
+  void dispose() { _endRemoteHand(); _pulseCtrl.dispose(); _ctrl.dispose(); _emailCtrl.dispose(); _passwordCtrl.dispose(); _phoneCtrl.dispose(); _wsChannel?.sink.close(); _pollTimer?.cancel(); _remoteHand?.dispose(); _rhWs?.dispose(); super.dispose(); }
 
   // ── Method 3: Relay-assisted (CDP-free mediated login via dynamic form) ──
   // POSTs /relay/oauth3/start {provider}; the relay builds the OAuth URL, arms
@@ -400,10 +404,16 @@ class _AddAccountSheetState extends State<_AddAccountSheet> with SingleTickerPro
   // Restart the relay-assisted flow for another account: tear down the finished session's
   // controller/ws and begin a new /start (a new sidecar) — the display was freed on success.
   void _restartRemoteHand() {
+    _endRemoteHand();
     _remoteHand?.dispose();
     _rhWs?.dispose();
     setState(() { _remoteHand = null; _rhWs = null; _rhError = null; });
     _startRemoteHand();
+  }
+
+  void _endRemoteHand() {
+    final sid = _remoteHand?.sessionId;
+    if (sid != null) unawaited(widget.relay.endRemoteHand(sid).catchError((e) => debugPrint('RemoteHand end failed: $e')));
   }
 
   // ── Method A: Flutter-side OAuth (user's IP ✅) ──
