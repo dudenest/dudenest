@@ -347,9 +347,8 @@ class _RelayScreenState extends State<RelayScreen> {
     if (_isImage(name)) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: Image.network(
-          '${widget.relay.baseUrl}/files/$id/thumbnail',
-          headers: widget.relay.headers,
+        child: Image(
+          image: widget.relay.thumbnail(id),
           width: sz,
           height: sz,
           fit: BoxFit.cover,

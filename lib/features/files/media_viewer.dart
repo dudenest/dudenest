@@ -111,7 +111,7 @@ class _MediaViewerState extends State<MediaViewer> with TickerProviderStateMixin
       final id = f['file_id'] as String? ?? '';
       final name = f['name'] as String? ?? '';
       if (_imageExts.contains(name.split('.').last.toLowerCase())) {
-        precacheImage(NetworkImage('${widget.relay.baseUrl}/files/$id/preview', headers: widget.relay.headers), context);
+        precacheImage(widget.relay.preview(id), context);
       }
     }
   }
@@ -423,8 +423,6 @@ class _ProgressiveImageState extends State<_ProgressiveImage> {
     super.dispose();
   }
 
-  String get _previewUrl => '${widget.relay.baseUrl}/files/${widget.fileId}/preview';
-  String get _originalUrl => '${widget.relay.baseUrl}/files/${widget.fileId}';
 
   Uint8List? _lqipBytes() {
     final lqip = widget.lqip;
@@ -454,8 +452,7 @@ class _ProgressiveImageState extends State<_ProgressiveImage> {
         AnimatedOpacity(
           opacity: _previewLoaded ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 300),
-          child: Image.network(_previewUrl, fit: BoxFit.contain,
-            headers: widget.relay.headers,
+          child: Image(image: widget.relay.preview(widget.fileId), fit: BoxFit.contain,
             frameBuilder: (ctx, child, frame, sync) {
               if ((frame != null || sync) && !_previewLoaded) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -478,8 +475,7 @@ class _ProgressiveImageState extends State<_ProgressiveImage> {
         if (widget.isActive) AnimatedOpacity(
           opacity: _originalLoaded ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 300),
-          child: Image.network(_originalUrl, fit: BoxFit.contain,
-            headers: widget.relay.headers,
+          child: Image(image: widget.relay.original(widget.fileId), fit: BoxFit.contain,
             frameBuilder: (ctx, child, frame, sync) {
               if ((frame != null || sync) && !_originalLoaded) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {

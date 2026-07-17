@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/widgets.dart' show ImageProvider, NetworkImage;
 import 'package:http/http.dart' as http;
 import '../auth/auth_service.dart';
+import '../storage/storage_engine.dart';
 
 class RelayException implements Exception {
   final String message;
@@ -12,7 +14,7 @@ class RelayException implements Exception {
   String toString() => 'RelayException: $message (Status: $statusCode)';
 }
 
-class RelayClient {
+class RelayClient implements StorageEngine {
   final String baseUrl; // e.g. "https://relay.dudenest.com"
   final String?
       relayToken; // Layer 3: short-lived HMAC from GET /api/v1/relays, sent as X-Relay-Token
@@ -279,6 +281,7 @@ class RelayClient {
   }
 
   // GET /files — returns list of uploaded FileMaps
+  @override
   Future<List<Map<String, dynamic>>> listFiles() async {
     final resp =
         await _http.get(Uri.parse('$baseUrl/files'), headers: _headers);
@@ -288,6 +291,7 @@ class RelayClient {
 
   // GET /files/manifest?since=<revision> — cache-friendly tile manifest.
   // Relays older than v0.24 return 404, so callers can fall back to GET /files.
+  @override
   Future<Map<String, dynamic>> fileManifest({String? since}) async {
     final uri = Uri.parse('$baseUrl/files/manifest').replace(
       queryParameters: since == null || since.isEmpty ? null : {'since': since},
@@ -298,6 +302,7 @@ class RelayClient {
   }
 
   // POST /files/upload — multipart form with field "file"
+  @override
   Future<Map<String, dynamic>> uploadFile(String filename, Uint8List bytes,
       {String strategy = 'Replica'}) async {
     final req = http.MultipartRequest(
@@ -312,6 +317,7 @@ class RelayClient {
   }
 
   // GET /files/{id}/map — returns full FileMap (replicas, locations)
+  @override
   Future<Map<String, dynamic>> getFileMap(String fileId) async {
     final resp = await _http.get(Uri.parse('$baseUrl/files/$fileId/map'),
         headers: _headers);
@@ -320,6 +326,7 @@ class RelayClient {
   }
 
   // GET /files/{id} — download file bytes
+  @override
   Future<Uint8List> downloadFile(String fileId) async {
     final resp =
         await _http.get(Uri.parse('$baseUrl/files/$fileId'), headers: _headers);
@@ -331,6 +338,7 @@ class RelayClient {
   }
 
   // DELETE /files/{id}
+  @override
   Future<void> deleteFile(String fileId) async {
     final resp = await _http.delete(Uri.parse('$baseUrl/files/$fileId'),
         headers: _headers);
@@ -405,6 +413,7 @@ class RelayClient {
   }
 
   // GET /files/{id}/meta — returns file metadata (favorites, albums, location, caption)
+  @override
   Future<Map<String, dynamic>> getMeta(String fileId) async {
     final resp = await _http.get(Uri.parse('$baseUrl/files/$fileId/meta'),
         headers: _headers);
@@ -413,6 +422,7 @@ class RelayClient {
   }
 
   // PATCH /files/{id}/meta — updates file metadata
+  @override
   Future<Map<String, dynamic>> patchMeta(
       String fileId, Map<String, dynamic> patch) async {
     final resp = await _http.patch(
@@ -423,6 +433,21 @@ class RelayClient {
     return _processResponse(resp, 'PATCH /files/$fileId/meta')
         as Map<String, dynamic>;
   }
+
+  // ── StorageEngine ImageProvidery ─────────────────────────────────────────
+  // Enkapsulują dotychczasowy wzorzec Image.network('$baseUrl/files/$id/...', headers: headers)
+  // rozsiany po ekranach (E2). Zachowanie identyczne (NetworkImage z tym samym URL + headers).
+  @override
+  ImageProvider thumbnail(String fileId) =>
+      NetworkImage('$baseUrl/files/$fileId/thumbnail', headers: headers);
+
+  @override
+  ImageProvider preview(String fileId) =>
+      NetworkImage('$baseUrl/files/$fileId/preview', headers: headers);
+
+  @override
+  ImageProvider original(String fileId) =>
+      NetworkImage('$baseUrl/files/$fileId', headers: headers);
 
   // GET /admin/version — returns running relay version + latest GitHub release + canonical URLs.
   // Powers the Update screen header. Available since relay v0.12.0; older relays return 404, which

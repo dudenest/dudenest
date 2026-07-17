@@ -54,9 +54,8 @@ class MasonryGrid extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
         child: Stack(fit: StackFit.expand, children: [
           (isImage(name) || isVideo(name))
-              ? Image.network(
-                  '${relay.baseUrl}/files/$id/thumbnail',
-                  headers: relay.headers,
+              ? Image(
+                  image: relay.thumbnail(id),
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
                     color: const Color(0xFF0D1117),
