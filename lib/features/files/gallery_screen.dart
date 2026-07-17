@@ -184,8 +184,7 @@ class _SquareGrid extends StatelessWidget {
                 onLongPress: () => onToggleSelect(id),
                 child: Stack(fit: StackFit.expand, children: [
                   (isImage(name) || isVideo(name))
-                      ? Image.network('${relay.baseUrl}/files/$id/thumbnail',
-                          headers: relay.headers, fit: BoxFit.cover,
+                      ? Image(image: relay.thumbnail(id), fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0D1117),
                               child: const Center(child: Icon(Icons.broken_image, color: Color(0xFF404040)))),
                           loadingBuilder: (_, child, p) => p == null ? child
@@ -267,8 +266,7 @@ class _ListView extends StatelessWidget {
           leading: ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: isImage(name)
-                ? Image.network('${relay.baseUrl}/files/$id/thumbnail',
-                    headers: relay.headers,
+                ? Image(image: relay.thumbnail(id),
                     width: 44, height: 44, fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => SizedBox(width: 44, height: 44,
                         child: Center(child: Icon(fileIcon(name)))))

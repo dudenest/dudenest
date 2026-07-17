@@ -113,9 +113,8 @@ class _JustifiedGridState extends State<JustifiedGrid> {
     final isMedia = widget.isImage(name) || widget.isVideo(name);
     if (isMedia) {
       return Stack(fit: StackFit.expand, children: [
-        Image.network(
-          '${widget.relay.baseUrl}/files/$id/thumbnail',
-          headers: widget.relay.headers,
+        Image(
+          image: widget.relay.thumbnail(id),
           fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => Container(
             color: const Color(0xFF0D1117),
