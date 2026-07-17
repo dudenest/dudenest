@@ -1,11 +1,11 @@
 {
-    "name": "dudenest",
-    "short_name": "dudenest",
+    "name": "DudeNest",
+    "short_name": "DudeNest",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "The end of daily hassle is near. Freedom is coming.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
