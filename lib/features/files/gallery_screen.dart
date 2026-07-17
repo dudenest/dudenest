@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/network/relay_client.dart';
+import '../../core/storage/storage_engine.dart';
 import 'date_group_model.dart';
 import 'date_scrubbar.dart';
 import 'gallery_settings.dart';
@@ -10,7 +10,7 @@ import 'masonry_grid.dart';
 // Supports Justified (Google Photos), Masonry (Pinterest), Square grid and List modes.
 class GalleryScreen extends StatefulWidget {
   final List<Map<String, dynamic>> files;
-  final RelayClient relay;
+  final StorageEngine relay;
   final GallerySettings settings;
   final Set<String> selected;
   final bool selectionMode;
@@ -136,7 +136,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 class _SquareGrid extends StatelessWidget {
   final List<DateGroup> groups;
   final GallerySettings settings;
-  final RelayClient relay;
+  final StorageEngine relay;
   final ScrollController scrollController;
   final Map<String, double> groupOffsets;
   final void Function(String id, String name) onOpen;
@@ -221,7 +221,7 @@ class _SquareGrid extends StatelessWidget {
 class _ListView extends StatelessWidget {
   final List<DateGroup> groups;
   final GallerySettings settings;
-  final RelayClient relay;
+  final StorageEngine relay;
   final ScrollController scrollController;
   final void Function(String id, String name) onOpen;
   final void Function(String id) onToggleSelect;

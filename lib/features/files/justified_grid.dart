@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import '../../core/network/relay_client.dart';
+import '../../core/storage/storage_engine.dart';
 import 'date_group_model.dart';
 import 'gallery_settings.dart';
 
@@ -12,7 +12,7 @@ import 'gallery_settings.dart';
 class JustifiedGrid extends StatefulWidget {
   final List<DateGroup> groups;
   final GallerySettings settings;
-  final RelayClient relay;
+  final StorageEngine relay;
   final ScrollController scrollController;
   final Map<String, double> groupOffsets;
   final void Function(String id, String name) onOpen;
