@@ -1,6 +1,16 @@
 import 'dart:typed_data';
 import 'package:flutter/widgets.dart' show ImageProvider;
 
+/// Błąd warstwy storage — wspólny dla implementacji [StorageEngine].
+class StorageException implements Exception {
+  final String message;
+  final int? statusCode;
+  final String? body;
+  StorageException(this.message, {this.statusCode, this.body});
+  @override
+  String toString() => 'StorageException: $message (status: $statusCode)';
+}
+
 /// StorageEngine — abstrakcja warstwy przechowywania plików/zdjęć.
 ///
 /// Cel (E2, 2026-07-17): odciąć ekrany galerii/plików od KONKRETNEJ implementacji.
