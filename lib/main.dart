@@ -18,6 +18,7 @@ import 'features/relay/relay_management_screen.dart';
 import 'features/files/gallery_settings.dart';
 import 'features/files/direct_mode_screen.dart';
 import 'core/storage/engine_config.dart';
+import 'core/oauth/google_drive_auth.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -385,6 +386,7 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Sign out', style: TextStyle(color: Colors.red)),
             onTap: () async {
               await AuthService().signOut();
+              await clearDriveToken(); // 🔒 skasuj token Drive — inaczej następny user dziedziczy dostęp
               final prefs = await SharedPreferences.getInstance();
               await prefs.remove(
                   'relay_url'); // prevent next account from inheriting a stale dev/custom URL

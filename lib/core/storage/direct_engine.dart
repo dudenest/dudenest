@@ -209,21 +209,28 @@ class DirectEngine implements StorageEngine {
       DriveImageProvider('$fileId#original', () => downloadFile(fileId));
 
   Future<Uint8List> _thumbBytes(String fileId, int size) async {
-    var link = _thumbLinks[fileId];
-    if (link == null) {
-      final data = _decode(
-          await _http.get(
-              Uri.parse('$_api/files/$fileId?fields=thumbnailLink'),
-              headers: await _authHeaders()),
-          'files.get(thumb) $fileId');
-      link = data['thumbnailLink'] as String?;
-      if (link != null) _thumbLinks[fileId] = link;
+    try {
+      var link = _thumbLinks[fileId];
+      if (link == null) {
+        final data = _decode(
+            await _http.get(
+                Uri.parse('$_api/files/$fileId?fields=thumbnailLink'),
+                headers: await _authHeaders()),
+            'files.get(thumb) $fileId');
+        link = data['thumbnailLink'] as String?;
+        if (link != null) _thumbLinks[fileId] = link;
+      }
+      if (link != null) {
+        // thumbnailLink = podpisany URL lh3 z suffiksem rozmiaru `=sN`.
+        final sized = link.replaceFirst(RegExp(r'=s\d+(-c)?$'), '=s$size');
+        final resp = await _http.get(Uri.parse(sized));
+        if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) return resp.bodyBytes;
+      }
+    } catch (_) {
+      // każdy błąd (metadata/lh3/CORS) → fallback niżej
     }
-    if (link == null) return Uint8List(0); // brak miniatury → provider rzuci pusty-bytes
-    // thumbnailLink to podpisany URL (bez potrzeby nagłówka auth) z suffiksem rozmiaru `=sN`.
-    final sized = link.replaceFirst(RegExp(r'=s\d+(-c)?$'), '=s$size');
-    final resp = await _http.get(Uri.parse(sized));
-    if (resp.statusCode != 200) return Uint8List(0);
-    return resp.bodyBytes;
+    // Fallback na oryginał (alt=media, sprawdzony): gdy brak thumbnailLink (świeży upload) LUB lh3
+    // zawiodło (CORS/403/pusty). Gwarantuje render miniatury zamiast broken_image; cover-fit skaluje.
+    return downloadFile(fileId);
   }
 }
