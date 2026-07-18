@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/auth/auth_service.dart';
 import '../../core/auth/web_utils.dart';
+import '../files/direct_gallery_screen.dart';
 import 'starfield_background.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -60,6 +61,14 @@ class LoginScreen extends StatelessWidget {
                         onTap: () => AuthService().signInWith('apple')),
                     const SizedBox(height: 24),
                     const _TryDemoButton(),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const DirectGalleryScreen())),
+                      icon: const Icon(Icons.cloud_outlined, size: 18, color: Color(0xFF6080A0)),
+                      label: const Text('Google Drive (direct, beta)',
+                          style: TextStyle(color: Color(0xFF6080A0), fontSize: 12)),
+                    ),
                     const SizedBox(height: 24),
                     const Text(
                       'By signing in you agree to the Terms of Service.\nYour files are stored encrypted across multiple providers.',
