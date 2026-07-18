@@ -9,3 +9,6 @@ Future<String> getDriveAccessToken() async {
 
 // Nie-web: brak trwałego tokenu GIS → nigdy nie auto-łączymy.
 Future<bool> hasValidDriveToken() async => false;
+
+// Nie-web: brak trwałego tokenu do wyczyszczenia.
+Future<void> clearDriveToken() async {}
