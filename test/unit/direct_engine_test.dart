@@ -143,4 +143,23 @@ void main() {
     expect(mediaHit, true); // poszło po oryginał
     expect(bytes, [9, 9, 9]); // fallback zwrócił bajty, nie pusto
   });
+
+  test('thumbnail: lh3 zawodzi (403) → fallback na oryginał', () async {
+    // thumbnailLink ISTNIEJE, ale pobranie z lh3 zwraca 403 (np. wymaga cookies) → i tak oryginał.
+    var mediaHit = false;
+    final client = MockClient((req) async {
+      final host = req.url.host;
+      if (host.contains('googleusercontent.com')) return http.Response('forbidden', 403);
+      if (req.url.queryParameters['alt'] == 'media') {
+        mediaHit = true;
+        return http.Response.bytes(Uint8List.fromList([7, 7]), 200);
+      }
+      // metadata → zwraca link do lh3
+      return http.Response(jsonEncode({'thumbnailLink': 'https://lh3.googleusercontent.com/x=s220'}),
+          200, headers: {'content-type': 'application/json'});
+    });
+    final bytes = await (engineReturning(client).thumbnail('f9') as DriveImageProvider).loader();
+    expect(mediaHit, true); // lh3 403 → spadło na oryginał
+    expect(bytes, [7, 7]);
+  });
 }
