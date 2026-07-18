@@ -20,8 +20,15 @@ extension type _GisTokenResponse(JSObject _) implements JSObject {
   external num? get expires_in; // TTL tokenu w sekundach (~3600); num bo JS może dać double
 }
 
+// Override do requestAccessToken — `prompt: 'select_account'` WYMUSZA picker kont Google przy każdym
+// realnym połączeniu, żeby user świadomie wybrał konto (bez cichego użycia domyślnego konta przeglądarki
+// — to była luka: zalogowany do Dudenest jako A, przeglądarka aktywna na Google B → cichy Drive B).
+extension type _GisOverride._(JSObject _) implements JSObject {
+  external factory _GisOverride({String prompt});
+}
+
 extension type _GisTokenClient(JSObject _) implements JSObject {
-  external void requestAccessToken();
+  external void requestAccessToken([_GisOverride overrideConfig]);
 }
 
 extension type _GisTokenClientConfig._(JSObject _) implements JSObject {
@@ -127,6 +134,6 @@ Future<String> getDriveAccessToken() async {
     scope: driveFileScope,
     callback: onToken.toJS,
   ));
-  client.requestAccessToken();
+  client.requestAccessToken(_GisOverride(prompt: 'select_account')); // zawsze pytaj, które konto Google
   return completer.future;
 }
