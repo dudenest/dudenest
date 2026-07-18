@@ -16,6 +16,8 @@ import 'features/relay/relay_screen.dart';
 import 'features/update/update_screen.dart';
 import 'features/relay/relay_management_screen.dart';
 import 'features/files/gallery_settings.dart';
+import 'features/files/direct_mode_screen.dart';
+import 'core/storage/engine_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -96,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0; // 0=Files, 1=Upload, 2=Settings
   int _uploadNonce = 0;
   late RelayClient _relay;
+  EngineMode _engineMode = EngineMode.relay; // feature flag: relay (default) | direct (Drive bez relaya)
   String? _relayUrl;
   String? _relayError;
   Timer?
@@ -107,6 +110,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _relay = RelayClient('');
+    EngineConfig.load().then((m) {
+      if (mounted) setState(() => _engineMode = m); // per-user flag (SharedPreferences), default relay
+    });
     // Await initial token fetch before rendering RelayScreen to prevent cold-start 403
     _loadRelayUrl().then((_) {
       if (mounted) setState(() => _relayReady = true);
@@ -196,20 +202,27 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final hasRelay = _relayUrl != null;
+    final direct = _engineMode == EngineMode.direct; // flaga: direct → Photos/Files czytają Drive bez relaya
     final screens = [
-      hasRelay
-          ? RelayScreen(relay: _relay, folder: 'photos')
-          : _PlaceholderPhotosScreen(onUpload: _openUpload),
-      hasRelay
-          ? RelayScreen(relay: _relay, folder: 'files')
-          : _RelayRequiredPlaceholder(
-              message: _relayError ?? 'No relay assigned to this account'),
+      direct
+          ? const DirectModeScreen(folder: 'photos')
+          : hasRelay
+              ? RelayScreen(relay: _relay, folder: 'photos')
+              : _PlaceholderPhotosScreen(onUpload: _openUpload),
+      direct
+          ? const DirectModeScreen(folder: 'files')
+          : hasRelay
+              ? RelayScreen(relay: _relay, folder: 'files')
+              : _RelayRequiredPlaceholder(
+                  message: _relayError ?? 'No relay assigned to this account'),
       UploadScreen(
           relay: hasRelay ? _relay : null, autoPickNonce: _uploadNonce),
       SettingsScreen(
           relay: hasRelay ? _relay : null,
           relayUrl: _relayUrl,
           relayError: _relayError,
+          engineMode: _engineMode,
+          onEngineModeChanged: _setEngineMode,
           onRelayUrlChanged: setRelayUrl,
           onRelayClaimed: _loadRelayUrl),
     ];
@@ -237,6 +250,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  // Przełączenie silnika (feature flag). Tylko PERSYSTUJE tryb + odświeża UI; token OAuth pozyskuje
+  // sam DirectModeScreen (connect-gate) — EngineFactory rzuca, gdy direct bez tokenu, więc toggle
+  // nie może „po cichu" wejść w direct bez OAuth.
+  Future<void> _setEngineMode(EngineMode m) async {
+    await EngineConfig.save(m);
+    if (mounted) setState(() => _engineMode = m);
   }
 
   void _openUpload() => setState(() {
@@ -326,6 +347,8 @@ class SettingsScreen extends StatelessWidget {
   final RelayClient? relay;
   final String? relayUrl;
   final String? relayError;
+  final EngineMode engineMode;
+  final void Function(EngineMode) onEngineModeChanged;
   final void Function(String) onRelayUrlChanged;
   final Future<void> Function() onRelayClaimed;
   const SettingsScreen(
@@ -333,6 +356,8 @@ class SettingsScreen extends StatelessWidget {
       required this.relay,
       required this.relayUrl,
       this.relayError,
+      required this.engineMode,
+      required this.onEngineModeChanged,
       required this.onRelayUrlChanged,
       required this.onRelayClaimed});
   @override
@@ -410,6 +435,21 @@ class SettingsScreen extends StatelessWidget {
           leading: const Icon(Icons.dark_mode),
           title: const Text('Dark'),
           onTap: () => app.setThemeMode(ThemeMode.dark),
+        ),
+        const Divider(),
+        const ListTile(
+            title: Text('Storage engine (eksperymentalne)',
+                style: TextStyle(fontWeight: FontWeight.bold))),
+        SwitchListTile(
+          secondary: const Icon(Icons.cloud_sync),
+          title: const Text('Tryb direct (Google Drive bez relaya)'),
+          subtitle: const Text(
+              'Photos/Files czytają pliki wprost z Twojego Google Drive (drive.file). '
+              'Beta — logowanie Google przy wejściu. Wyłączone = relay (domyślny).',
+              style: TextStyle(fontSize: 12)),
+          value: engineMode == EngineMode.direct,
+          onChanged: (v) =>
+              onEngineModeChanged(v ? EngineMode.direct : EngineMode.relay),
         ),
         const Divider(),
         const ListTile(
