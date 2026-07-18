@@ -6,3 +6,6 @@ Future<String> getDriveAccessToken() async {
       'getDriveAccessToken: DirectEngine OAuth przez GIS działa tylko na web. '
       'Mobile użyje google_sign_in/flutter_appauth (E1).');
 }
+
+// Nie-web: brak trwałego tokenu GIS → nigdy nie auto-łączymy.
+Future<bool> hasValidDriveToken() async => false;

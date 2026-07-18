@@ -39,6 +39,18 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   String? _error;
   bool _loading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Po reloadzie strony: jeśli token drive.file przetrwał (SharedPreferences), połącz od razu —
+    // bez connect-gate i bez popupu GIS. Tylko realna ścieżka GIS (engineBuilder==null); w testach nie.
+    if (widget.engineBuilder == null) {
+      hasValidDriveToken().then((ok) {
+        if (ok && mounted && _files == null && !_loading) _connect();
+      });
+    }
+  }
+
   // Photos = tylko media (backend `folder` lub rozszerzenie); Files = wszystko (parytet z RelayScreen).
   bool _matchesFolder(Map<String, dynamic> f) {
     if (widget.folder == 'files') return true;

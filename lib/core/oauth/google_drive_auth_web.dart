@@ -2,6 +2,7 @@
 // nazwy snake_case, bo mapują 1:1 na właściwości JS API Google Identity Services.
 import 'dart:async';
 import 'dart:js_interop';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'google_config.dart';
 
 // Pozyskanie access tokenu Google Drive (scope drive.file) w przeglądarce przez
@@ -33,22 +34,45 @@ extension type _GisTokenClientConfig._(JSObject _) implements JSObject {
 @JS('google.accounts.oauth2.initTokenClient')
 external _GisTokenClient _initTokenClient(_GisTokenClientConfig config);
 
-// Cache tokenu (in-memory). KRYTYCZNE: `requestAccessToken()` otwiera popup GIS, który przeglądarka
-// blokuje POZA user-gesture. DirectEngine woła getDriveAccessToken per-żądanie (miniatury, upload po
-// file-pickerze) — bez cache każde takie żądanie próbowałoby otworzyć popup i wisiałoby/padało. Popup
-// pojawia się więc tylko przy pierwszym połączeniu (przycisk Connect = gest) i po wygaśnięciu tokenu.
+// Cache tokenu. KRYTYCZNE: `requestAccessToken()` otwiera popup GIS, który przeglądarka blokuje POZA
+// user-gesture. DirectEngine woła getDriveAccessToken per-żądanie (miniatury, upload po file-pickerze)
+// — bez cache każde takie żądanie próbowałoby otworzyć popup i wisiałoby/padało. Popup pojawia się więc
+// tylko przy pierwszym połączeniu (przycisk Connect = gest) i po wygaśnięciu. Token jest też
+// persystowany (SharedPreferences → localStorage) → przetrwa reload strony bez ponownego popupu.
+// Bezpieczeństwo: to access token drive.file, ~1h TTL, bez refresh — tak jak JWT aplikacji trzymany
+// w localStorage; scope wąski, blast radius ograniczony.
 String? _cachedToken;
 DateTime? _cachedExpiry;
+const _kTok = 'drive_access_token';
+const _kExp = 'drive_access_token_exp_ms';
 
-/// Zwraca access token `drive.file`. Zwraca token z cache, jeśli ważny (margines 60s); w przeciwnym
-/// razie otwiera popup zgody Google (wymaga user-gesture) i cache'uje wynik. Rzuca, jeśli GIS
+bool _valid(String? t, DateTime? e) =>
+    t != null && e != null && DateTime.now().isBefore(e.subtract(const Duration(seconds: 60)));
+
+/// Czy istnieje ważny token (w pamięci lub w SharedPreferences). Pozwala DirectModeScreen
+/// auto-połączyć się po reloadzie strony BEZ popupu GIS.
+Future<bool> hasValidDriveToken() async {
+  if (_valid(_cachedToken, _cachedExpiry)) return true;
+  final p = await SharedPreferences.getInstance();
+  final ms = p.getInt(_kExp);
+  return ms != null && _valid(p.getString(_kTok), DateTime.fromMillisecondsSinceEpoch(ms));
+}
+
+/// Zwraca access token `drive.file`. Kolejność: cache-w-pamięci → SharedPreferences (przetrwa reload)
+/// → popup zgody Google (wymaga user-gesture). Cache'uje wynik w obu warstwach. Rzuca, jeśli GIS
 /// niezaładowane lub user odmówił.
-Future<String> getDriveAccessToken() {
-  final tok = _cachedToken;
-  final exp = _cachedExpiry;
-  if (tok != null && exp != null &&
-      DateTime.now().isBefore(exp.subtract(const Duration(seconds: 60)))) {
-    return Future.value(tok); // reużycie — brak popupu (kluczowe dla upload/miniatur)
+Future<String> getDriveAccessToken() async {
+  if (_valid(_cachedToken, _cachedExpiry)) return _cachedToken!; // brak popupu (upload/miniatury)
+  final prefs = await SharedPreferences.getInstance();
+  final pms = prefs.getInt(_kExp);
+  if (pms != null) {
+    final pt = prefs.getString(_kTok);
+    final pe = DateTime.fromMillisecondsSinceEpoch(pms);
+    if (_valid(pt, pe)) {
+      _cachedToken = pt;
+      _cachedExpiry = pe;
+      return pt!; // token przetrwał reload → brak popupu
+    }
   }
   final completer = Completer<String>();
   void onToken(_GisTokenResponse resp) {
@@ -56,6 +80,8 @@ Future<String> getDriveAccessToken() {
     if (t != null && t.isNotEmpty) {
       _cachedToken = t;
       _cachedExpiry = DateTime.now().add(Duration(seconds: (resp.expires_in ?? 3600).toInt()));
+      prefs.setString(_kTok, t);
+      prefs.setInt(_kExp, _cachedExpiry!.millisecondsSinceEpoch);
       if (!completer.isCompleted) completer.complete(t);
     } else if (!completer.isCompleted) {
       completer.completeError(
