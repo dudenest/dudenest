@@ -15,6 +15,7 @@ import 'google_config.dart';
 extension type _GisTokenResponse(JSObject _) implements JSObject {
   external String? get access_token;
   external String? get error;
+  external num? get expires_in; // TTL tokenu w sekundach (~3600); num bo JS może dać double
 }
 
 extension type _GisTokenClient(JSObject _) implements JSObject {
@@ -32,14 +33,30 @@ extension type _GisTokenClientConfig._(JSObject _) implements JSObject {
 @JS('google.accounts.oauth2.initTokenClient')
 external _GisTokenClient _initTokenClient(_GisTokenClientConfig config);
 
-/// Zwraca świeży access token `drive.file`. Otwiera popup zgody Google przy pierwszym
-/// wywołaniu (lub gdy token wygasł). Rzuca, jeśli GIS niezaładowane lub user odmówił.
+// Cache tokenu (in-memory). KRYTYCZNE: `requestAccessToken()` otwiera popup GIS, który przeglądarka
+// blokuje POZA user-gesture. DirectEngine woła getDriveAccessToken per-żądanie (miniatury, upload po
+// file-pickerze) — bez cache każde takie żądanie próbowałoby otworzyć popup i wisiałoby/padało. Popup
+// pojawia się więc tylko przy pierwszym połączeniu (przycisk Connect = gest) i po wygaśnięciu tokenu.
+String? _cachedToken;
+DateTime? _cachedExpiry;
+
+/// Zwraca access token `drive.file`. Zwraca token z cache, jeśli ważny (margines 60s); w przeciwnym
+/// razie otwiera popup zgody Google (wymaga user-gesture) i cache'uje wynik. Rzuca, jeśli GIS
+/// niezaładowane lub user odmówił.
 Future<String> getDriveAccessToken() {
+  final tok = _cachedToken;
+  final exp = _cachedExpiry;
+  if (tok != null && exp != null &&
+      DateTime.now().isBefore(exp.subtract(const Duration(seconds: 60)))) {
+    return Future.value(tok); // reużycie — brak popupu (kluczowe dla upload/miniatur)
+  }
   final completer = Completer<String>();
   void onToken(_GisTokenResponse resp) {
-    final tok = resp.access_token;
-    if (tok != null && tok.isNotEmpty) {
-      if (!completer.isCompleted) completer.complete(tok);
+    final t = resp.access_token;
+    if (t != null && t.isNotEmpty) {
+      _cachedToken = t;
+      _cachedExpiry = DateTime.now().add(Duration(seconds: (resp.expires_in ?? 3600).toInt()));
+      if (!completer.isCompleted) completer.complete(t);
     } else if (!completer.isCompleted) {
       completer.completeError(
           StateError('GIS token error: ${resp.error ?? "brak access_token"}'));
