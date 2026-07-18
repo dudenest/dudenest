@@ -219,7 +219,12 @@ class DirectEngine implements StorageEngine {
       link = data['thumbnailLink'] as String?;
       if (link != null) _thumbLinks[fileId] = link;
     }
-    if (link == null) return Uint8List(0); // brak miniatury → provider rzuci pusty-bytes
+    if (link == null) {
+      // Drive jeszcze nie wygenerował miniatury (generacja async po uploadzie) → fallback na oryginał
+      // (alt=media, działa od razu); cover-fit w gridzie przeskaluje. Bez tego świeżo wgrane pliki
+      // pokazują broken_image aż Drive dorobi thumbnailLink.
+      return downloadFile(fileId);
+    }
     // thumbnailLink to podpisany URL (bez potrzeby nagłówka auth) z suffiksem rozmiaru `=sN`.
     final sized = link.replaceFirst(RegExp(r'=s\d+(-c)?$'), '=s$size');
     final resp = await _http.get(Uri.parse(sized));

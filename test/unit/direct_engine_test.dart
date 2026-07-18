@@ -126,4 +126,21 @@ void main() {
     expect({t.cacheKey, p.cacheKey, o.cacheKey}.length, 3);
     expect(t.cacheKey, contains('f1'));
   });
+
+  test('thumbnail bez thumbnailLink → fallback na oryginał (alt=media)', () async {
+    // Świeżo wgrany plik: Drive nie ma jeszcze thumbnailLink → thumbnail MUSI pokazać oryginał,
+    // nie broken_image. Metadata zwraca brak linku, alt=media zwraca bajty.
+    var mediaHit = false;
+    final client = MockClient((req) async {
+      if (req.url.queryParameters['alt'] == 'media') {
+        mediaHit = true;
+        return http.Response.bytes(Uint8List.fromList([9, 9, 9]), 200);
+      }
+      return http.Response(jsonEncode({}), 200, headers: {'content-type': 'application/json'});
+    });
+    final tp = engineReturning(client).thumbnail('f1') as DriveImageProvider;
+    final bytes = await tp.loader();
+    expect(mediaHit, true); // poszło po oryginał
+    expect(bytes, [9, 9, 9]); // fallback zwrócił bajty, nie pusto
+  });
 }
