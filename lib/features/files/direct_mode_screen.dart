@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/oauth/google_drive_auth.dart';
 import '../../core/storage/direct_engine.dart';
 import '../../core/storage/storage_engine.dart';
@@ -14,7 +15,8 @@ import 'gallery_settings.dart';
 class DirectModeScreen extends StatefulWidget {
   final String folder; // 'photos' | 'files'
   final StorageEngine Function()? engineBuilder; // default → DirectEngine(getDriveAccessToken)
-  const DirectModeScreen({super.key, required this.folder, this.engineBuilder});
+  final Future<FilePickerResult?> Function()? filePicker; // szew testowy; default → FilePicker.platform
+  const DirectModeScreen({super.key, required this.folder, this.engineBuilder, this.filePicker});
   @override
   State<DirectModeScreen> createState() => _DirectModeScreenState();
 }
@@ -59,6 +61,46 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     }
   }
 
+  // Ponowne wylistowanie ISTNIEJĄCYM silnikiem (reużywa token) — po uploadzie i przy „Odśwież".
+  Future<void> _reload() async {
+    final engine = _engine;
+    if (engine == null) return _connect();
+    setState(() { _loading = true; _error = null; });
+    try {
+      final files = (await engine.listFiles()).where(_matchesFolder).toList(growable: false);
+      if (!mounted) return;
+      setState(() { _files = files; _loading = false; });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = '$e'; _loading = false; });
+    }
+  }
+
+  // Upload plików WPROST do Google Drive (DirectEngine, bez relaya) → re-list. User-gesture (FAB).
+  Future<void> _upload() async {
+    final engine = _engine;
+    if (engine == null) return;
+    final pick = widget.filePicker ??
+        () => FilePicker.platform.pickFiles(withData: true, allowMultiple: true);
+    final res = await pick();
+    final jobs = res?.files.where((f) => f.bytes != null).toList() ?? const [];
+    if (jobs.isEmpty) return; // anulowano / brak bajtów
+    setState(() { _loading = true; _error = null; });
+    try {
+      for (final f in jobs) {
+        await engine.uploadFile(f.name, f.bytes!);
+      }
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Wgrano ${jobs.length} plik(ów) do Google Drive.')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _error = '$e'; _loading = false; });
+    }
+  }
+
   // MVP: tap na obrazie → pełny podgląd przez StorageEngine.original. Wideo/pliki nie-obrazowe odroczone.
   void _openImage(String id, String name) {
     final engine = _engine;
@@ -77,9 +119,15 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(title), actions: [
         if (_files != null)
-          IconButton(icon: const Icon(Icons.refresh), tooltip: 'Odśwież', onPressed: _loading ? null : _connect),
+          IconButton(icon: const Icon(Icons.refresh), tooltip: 'Odśwież', onPressed: _loading ? null : _reload),
       ]),
       body: _body(),
+      floatingActionButton: _files != null
+          ? FloatingActionButton.extended(
+              onPressed: _loading ? null : _upload,
+              icon: const Icon(Icons.upload),
+              label: const Text('Upload'))
+          : null,
     );
   }
 

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dudenest/core/storage/storage_engine.dart';
 import 'package:dudenest/features/files/direct_mode_screen.dart';
@@ -12,13 +13,14 @@ final _px = base64Decode(
 
 /// Fake StorageEngine: konfigurowalne listFiles (lista lub wyjątek), reszta nieistotna dla testu.
 class _FakeEngine extends StorageEngine {
-  final List<Map<String, dynamic>>? files;
+  final List<Map<String, dynamic>> _files;
   final Object? throwOnList;
-  _FakeEngine({this.files, this.throwOnList});
+  final List<String> uploaded = [];
+  _FakeEngine({List<Map<String, dynamic>>? files, this.throwOnList}) : _files = [...?files];
   @override
   Future<List<Map<String, dynamic>>> listFiles() async {
     if (throwOnList != null) throw throwOnList!;
-    return files ?? const [];
+    return List.of(_files);
   }
   ImageProvider _img(String _) => MemoryImage(_px);
   @override
@@ -30,7 +32,12 @@ class _FakeEngine extends StorageEngine {
   @override
   Future<Map<String, dynamic>> fileManifest({String? since}) async => {};
   @override
-  Future<Map<String, dynamic>> uploadFile(String f, Uint8List b, {String strategy = 'Replica'}) async => {};
+  Future<Map<String, dynamic>> uploadFile(String f, Uint8List b, {String strategy = 'Replica'}) async {
+    uploaded.add(f);
+    final entry = {'file_id': 'up-${uploaded.length}', 'name': f, 'folder': 'photos'};
+    _files.add(entry); // po uploadzie plik pojawia się w listFiles
+    return entry;
+  }
   @override
   Future<Uint8List> downloadFile(String fileId) async => Uint8List(0);
   @override
@@ -92,5 +99,26 @@ void main() {
     await t.tap(find.text('Connect Google Drive'));
     await t.pumpAndSettle();
     expect(t.widget<GalleryScreen>(find.byType(GalleryScreen)).files.length, 2); // a.jpg + note.pdf
+  });
+
+  testWidgets('upload → DirectEngine.uploadFile + re-list pokazuje plik', (t) async {
+    final engine = _FakeEngine(files: []);
+    final picked = FilePickerResult(
+        [PlatformFile(name: 'up.jpg', size: 3, bytes: Uint8List.fromList([1, 2, 3]))]);
+    await t.pumpWidget(_wrap(DirectModeScreen(
+        folder: 'photos', engineBuilder: () => engine, filePicker: () async => picked)));
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('Brak plików'), findsOneWidget); // start: pusto
+    expect(find.text('Upload'), findsOneWidget); // FAB widoczny po połączeniu
+    await t.tap(find.text('Upload'));
+    await t.pumpAndSettle();
+    expect(engine.uploaded, ['up.jpg']); // uploadFile wywołany
+    expect(find.byType(GalleryScreen), findsOneWidget); // re-list → grid z wgranym plikiem
+  });
+
+  testWidgets('connect-gate bez FAB (upload dopiero po połączeniu)', (t) async {
+    await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => _FakeEngine(files: []))));
+    expect(find.text('Upload'), findsNothing);
   });
 }
