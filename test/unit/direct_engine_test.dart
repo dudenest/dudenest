@@ -57,6 +57,21 @@ void main() {
     expect(b['taken_at'], '2026-02-02T00:00:00Z'); // brak EXIF → fallback createdTime
   });
 
+  test('uploadFile: ustawia mimeType z rozszerzenia (nie octet-stream)', () async {
+    late String seenBody;
+    final client = MockClient((req) async {
+      seenBody = req.body;
+      return http.Response(
+          jsonEncode({'id': 'u1', 'name': 'doc.pdf', 'mimeType': 'application/pdf', 'createdTime': 't'}),
+          200, headers: {'content-type': 'application/json'});
+    });
+    final res = await engineReturning(client).uploadFile('doc.pdf', Uint8List.fromList([1, 2, 3]));
+    expect(seenBody.contains('"mimeType":"application/pdf"'), isTrue); // metadata
+    expect(seenBody.contains('Content-Type: application/pdf'), isTrue); // część media
+    expect(seenBody.contains('application/octet-stream'), isFalse); // znany typ → NIE octet-stream
+    expect(res['file_id'], 'u1');
+  });
+
   test('listFiles: paginacja po nextPageToken', () async {
     var call = 0;
     final client = MockClient((req) async {

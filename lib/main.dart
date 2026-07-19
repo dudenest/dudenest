@@ -277,6 +277,14 @@ class _HomeScreenState extends State<HomeScreen> {
   // sam DirectModeScreen (connect-gate) — EngineFactory rzuca, gdy direct bez tokenu, więc toggle
   // nie może „po cichu" wejść w direct bez OAuth.
   Future<void> _setEngineMode(EngineMode m) async {
+    // Włączenie direct = gest użytkownika (Switch) → od razu pozyskaj token GIS (popup dozwolony
+    // w oknie gestu), żeby Photos/Files/Upload połączyły się CICHO bez klikania „Connect".
+    // Best-effort: anulowanie/błąd nie blokuje przełączenia (ekrany pokażą bramę Connect jako fallback).
+    if (m == EngineMode.direct) {
+      try {
+        await getDriveAccessToken();
+      } catch (_) {}
+    }
     await EngineConfig.save(m);
     if (mounted) setState(() => _engineMode = m);
   }

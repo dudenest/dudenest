@@ -70,6 +70,18 @@ class DirectEngine implements StorageEngine {
     };
   }
 
+  // Zgadnij mime z rozszerzenia (Drive nadaje octet-stream, gdy nie podamy). Fallback bezpieczny.
+  static const _mimeByExt = {
+    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+    'webp': 'image/webp', 'avif': 'image/avif', 'bmp': 'image/bmp', 'heic': 'image/heic',
+    'heif': 'image/heif', 'svg': 'image/svg+xml',
+    'mp4': 'video/mp4', 'mov': 'video/quicktime', 'avi': 'video/x-msvideo', 'mkv': 'video/x-matroska',
+    'webm': 'video/webm', 'm4v': 'video/x-m4v', '3gp': 'video/3gpp',
+    'pdf': 'application/pdf', 'txt': 'text/plain', 'zip': 'application/zip', 'json': 'application/json',
+  };
+  static String _mimeFor(String name) =>
+      _mimeByExt[name.split('.').last.toLowerCase()] ?? 'application/octet-stream';
+
   @override
   Future<List<Map<String, dynamic>>> listFiles() async {
     final headers = await _authHeaders();
@@ -103,14 +115,16 @@ class DirectEngine implements StorageEngine {
   @override
   Future<Map<String, dynamic>> uploadFile(String filename, Uint8List bytes,
       {String strategy = 'Replica'}) async {
-    // Drive multipart upload (metadata + media w jednym żądaniu).
+    // Drive multipart upload (metadata + media w jednym żądaniu). mimeType z rozszerzenia — bez tego
+    // Drive zapisuje octet-stream → zła klasyfikacja media/plik i brak miniatur.
+    final mime = _mimeFor(filename);
     final boundary = 'dudenest${DateTime.now().microsecondsSinceEpoch}';
-    final meta = jsonEncode({'name': filename});
+    final meta = jsonEncode({'name': filename, 'mimeType': mime});
     final body = <int>[];
     void add(String s) => body.addAll(utf8.encode(s));
     add('--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n');
     add('$meta\r\n');
-    add('--$boundary\r\nContent-Type: application/octet-stream\r\n\r\n');
+    add('--$boundary\r\nContent-Type: $mime\r\n\r\n');
     body.addAll(bytes);
     add('\r\n--$boundary--');
     final resp = await _http.post(

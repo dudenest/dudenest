@@ -23,7 +23,7 @@ class DirectModeScreen extends StatefulWidget {
 
 // Lokalne helpery rodzaju pliku (RelayScreen/media_viewer mają własne kopie — świadoma, drobna
 // duplikacja, by NIE dotykać ścieżki relay; ewentualny wspólny util = osobny dług).
-const _imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'heic', 'heif'};
+const _imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif'};
 const _videoExts = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp', 'wmv', 'flv'};
 bool _isImage(String n) => _imageExts.contains(n.split('.').last.toLowerCase());
 bool _isVideo(String n) => _videoExts.contains(n.split('.').last.toLowerCase());
@@ -53,12 +53,13 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     }
   }
 
-  // Photos = tylko media (backend `folder` lub rozszerzenie); Files = wszystko (parytet z RelayScreen).
+  // Photos = tylko renderowalne media (po ROZSZERZENIU, jak RelayScreen — deterministyczne, niezależne
+  // od tego jaki mime Drive nadał uploadowi); Files = wszystko. Rozszerzenia nierenderowalne w Flutter
+  // web (avif/heic/svg) świadomie POZA _imageExts → nie pokazujemy pustych kafelków w Photos.
   bool _matchesFolder(Map<String, dynamic> f) {
     if (widget.folder == 'files') return true;
-    final backend = f['folder'] as String?;
     final ext = (f['name'] as String? ?? '').split('.').last.toLowerCase();
-    return backend == 'photos' || _imageExts.contains(ext) || _videoExts.contains(ext);
+    return _imageExts.contains(ext) || _videoExts.contains(ext);
   }
 
   Future<void> _connect() async {

@@ -60,11 +60,10 @@ class _RelayScreenState extends State<RelayScreen> {
     'png',
     'gif',
     'webp',
-    'avif',
     'bmp',
     'heic',
     'heif'
-  }; // svg excluded: no native decode in Flutter web
+  }; // svg/avif excluded: no native decode in Flutter web
   static const _videoExts = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp'};
 
   /// Determines whether file `f` belongs in this screen given widget.folder filter.

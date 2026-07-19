@@ -98,6 +98,16 @@ void main() {
     expect(t.widget<GalleryScreen>(find.byType(GalleryScreen)).files.length, 1); // tylko a.jpg
   });
 
+  testWidgets('photos: nie-obraz z backend folder=photos (pdf) NIE w Photos (filtr po rozszerzeniu)', (t) async {
+    // Regresja (d): Drive potrafi zaklasyfikować upload jako photos; filtr MUSI iść po rozszerzeniu.
+    final misclassified = {'file_id': 'm1', 'name': 'doc.pdf', 'folder': 'photos'};
+    await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => _FakeEngine(files: [misclassified]))));
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('No files'), findsOneWidget); // odfiltrowany mimo backend=photos
+    expect(find.byType(GalleryScreen), findsNothing);
+  });
+
   testWidgets('folder=files → wszystko (filtr)', (t) async {
     await t.pumpWidget(_wrap(DirectModeScreen(folder: 'files', engineBuilder: () => _FakeEngine(files: [photo, doc]))));
     await t.tap(find.text('Connect Google Drive'));
