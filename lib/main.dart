@@ -26,6 +26,10 @@ import 'core/oauth/google_drive_auth.dart';
 // Photos — izolacja NIEZWERYFIKOWANA. Kod direct zostaje; ta flaga = brama. Włączyć dopiero po teście
 // 2-profile + przeglądzie modelu tożsamości. Gdy false: toggle w Settings ukryty + wymuszony relay.
 const bool kDirectModeEnabled = false;
+// Brama testowa: `?e3ctest=1` w URL włącza direct do KONTROLOWANEGO testu izolacji w 2 profilach
+// (bez re-eksponowania direct wszystkim userom prod). Patrz DIRECT-MODE-E3-TEST-HANDOVER.md.
+final bool _e3cTestParam = Uri.base.queryParameters['e3ctest'] == '1';
+bool directModeEnabled() => kDirectModeEnabled || _e3cTestParam;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -120,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _relay = RelayClient('');
     EngineConfig.load().then((m) {
       // Gdy direct wyłączony na prod → wymuś relay, nawet jeśli user miał zapisany direct (nie utknie).
-      if (mounted) setState(() => _engineMode = kDirectModeEnabled ? m : EngineMode.relay);
+      if (mounted) setState(() => _engineMode = directModeEnabled() ? m : EngineMode.relay);
     });
     // Await initial token fetch before rendering RelayScreen to prevent cold-start 403
     _loadRelayUrl().then((_) {
@@ -211,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final hasRelay = _relayUrl != null;
-    final direct = kDirectModeEnabled && _engineMode == EngineMode.direct; // direct ukryty na prod (brama)
+    final direct = directModeEnabled() && _engineMode == EngineMode.direct; // direct ukryty na prod (brama)
     final screens = [
       direct
           ? const DirectModeScreen(folder: 'photos')
@@ -446,8 +450,8 @@ class SettingsScreen extends StatelessWidget {
           title: const Text('Dark'),
           onTap: () => app.setThemeMode(ThemeMode.dark),
         ),
-        // 🔒 Toggle direct UKRYTY na prod (kDirectModeEnabled=false) do czasu weryfikacji izolacji kont.
-        if (kDirectModeEnabled) ...[
+        // 🔒 Toggle direct UKRYTY na prod; widoczny tylko z ?e3ctest=1 (kontrolowany test izolacji).
+        if (directModeEnabled()) ...[
           const Divider(),
           const ListTile(
               title: Text('Storage engine (eksperymentalne)',
