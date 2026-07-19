@@ -92,20 +92,6 @@ class DirectEngine implements StorageEngine {
     return out;
   }
 
-  /// DEBUG/diagnostyka: email konta Google, do którego należy bieżący token Drive (Drive `about`).
-  /// Służy do wykrycia niespójności „konto Dudenest vs konto Drive" (weryfikacja izolacji kont).
-  Future<String?> driveAccountEmail() async {
-    try {
-      final data = _decode(
-          await _http.get(Uri.parse('$_api/about?fields=user(emailAddress)'),
-              headers: await _authHeaders()),
-          'about');
-      return (data['user'] as Map<String, dynamic>?)?['emailAddress'] as String?;
-    } catch (_) {
-      return null;
-    }
-  }
-
   @override
   Future<Map<String, dynamic>> fileManifest({String? since}) async {
     // Drive nie ma manifestu z rewizjami — zwracamy pełną listę pod tym samym kształtem,

@@ -20,16 +20,11 @@ import 'features/files/direct_mode_screen.dart';
 import 'core/storage/engine_config.dart';
 import 'core/oauth/google_drive_auth.dart';
 
-// 🔒 Direct mode (E3) UKRYTY na prod do czasu weryfikacji izolacji kont w 2 izolowanych profilach
-// Chrome (każdy 1 konto Google). Powód: 2026-07-18 zaobserwowano możliwą niespójność między
-// AuthService.user (na którym opiera się wiązanie tokenu Drive per-user) a kontem Drive pokazywanym w
-// Photos — izolacja NIEZWERYFIKOWANA. Kod direct zostaje; ta flaga = brama. Włączyć dopiero po teście
-// 2-profile + przeglądzie modelu tożsamości. Gdy false: toggle w Settings ukryty + wymuszony relay.
-const bool kDirectModeEnabled = false;
-// Brama testowa: `?e3ctest=1` w URL włącza direct do KONTROLOWANEGO testu izolacji w 2 profilach
-// (bez re-eksponowania direct wszystkim userom prod). Patrz DIRECT-MODE-E3-TEST-HANDOVER.md.
-final bool _e3cTestParam = Uri.base.queryParameters['e3ctest'] == '1';
-bool directModeEnabled() => kDirectModeEnabled || _e3cTestParam;
+// Direct mode (E3): izolacja kont ZWERYFIKOWANA 2026-07-19 w 2 izolowanych profilach (Dudenest email ==
+// Drive email na obu, zero wycieków). Włączone jako beta. Token Drive wiązany z AuthService.user.id +
+// czyszczony przy wylogowaniu + select_account przy Connect. Domyślny silnik i tak = relay; user włącza
+// direct w Settings. Historia/handover: docs/DIRECT-MODE-E3-TEST-HANDOVER.md.
+const bool kDirectModeEnabled = true;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -124,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _relay = RelayClient('');
     EngineConfig.load().then((m) {
       // Gdy direct wyłączony na prod → wymuś relay, nawet jeśli user miał zapisany direct (nie utknie).
-      if (mounted) setState(() => _engineMode = directModeEnabled() ? m : EngineMode.relay);
+      if (mounted) setState(() => _engineMode = kDirectModeEnabled ? m : EngineMode.relay);
     });
     // Await initial token fetch before rendering RelayScreen to prevent cold-start 403
     _loadRelayUrl().then((_) {
@@ -215,7 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final hasRelay = _relayUrl != null;
-    final direct = directModeEnabled() && _engineMode == EngineMode.direct; // direct ukryty na prod (brama)
+    final direct = kDirectModeEnabled && _engineMode == EngineMode.direct;
     final screens = [
       direct
           ? const DirectModeScreen(folder: 'photos')
@@ -450,8 +445,7 @@ class SettingsScreen extends StatelessWidget {
           title: const Text('Dark'),
           onTap: () => app.setThemeMode(ThemeMode.dark),
         ),
-        // 🔒 Toggle direct UKRYTY na prod; widoczny tylko z ?e3ctest=1 (kontrolowany test izolacji).
-        if (directModeEnabled()) ...[
+        if (kDirectModeEnabled) ...[
           const Divider(),
           const ListTile(
               title: Text('Storage engine (eksperymentalne)',
