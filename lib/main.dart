@@ -20,6 +20,13 @@ import 'features/files/direct_mode_screen.dart';
 import 'core/storage/engine_config.dart';
 import 'core/oauth/google_drive_auth.dart';
 
+// 🔒 Direct mode (E3) UKRYTY na prod do czasu weryfikacji izolacji kont w 2 izolowanych profilach
+// Chrome (każdy 1 konto Google). Powód: 2026-07-18 zaobserwowano możliwą niespójność między
+// AuthService.user (na którym opiera się wiązanie tokenu Drive per-user) a kontem Drive pokazywanym w
+// Photos — izolacja NIEZWERYFIKOWANA. Kod direct zostaje; ta flaga = brama. Włączyć dopiero po teście
+// 2-profile + przeglądzie modelu tożsamości. Gdy false: toggle w Settings ukryty + wymuszony relay.
+const bool kDirectModeEnabled = false;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AuthService()
@@ -112,7 +119,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _relay = RelayClient('');
     EngineConfig.load().then((m) {
-      if (mounted) setState(() => _engineMode = m); // per-user flag (SharedPreferences), default relay
+      // Gdy direct wyłączony na prod → wymuś relay, nawet jeśli user miał zapisany direct (nie utknie).
+      if (mounted) setState(() => _engineMode = kDirectModeEnabled ? m : EngineMode.relay);
     });
     // Await initial token fetch before rendering RelayScreen to prevent cold-start 403
     _loadRelayUrl().then((_) {
@@ -203,7 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final hasRelay = _relayUrl != null;
-    final direct = _engineMode == EngineMode.direct; // flaga: direct → Photos/Files czytają Drive bez relaya
+    final direct = kDirectModeEnabled && _engineMode == EngineMode.direct; // direct ukryty na prod (brama)
     final screens = [
       direct
           ? const DirectModeScreen(folder: 'photos')
@@ -438,21 +446,24 @@ class SettingsScreen extends StatelessWidget {
           title: const Text('Dark'),
           onTap: () => app.setThemeMode(ThemeMode.dark),
         ),
-        const Divider(),
-        const ListTile(
-            title: Text('Storage engine (eksperymentalne)',
-                style: TextStyle(fontWeight: FontWeight.bold))),
-        SwitchListTile(
-          secondary: const Icon(Icons.cloud_sync),
-          title: const Text('Tryb direct (Google Drive bez relaya)'),
-          subtitle: const Text(
-              'Photos/Files czytają pliki wprost z Twojego Google Drive (drive.file). '
-              'Beta — logowanie Google przy wejściu. Wyłączone = relay (domyślny).',
-              style: TextStyle(fontSize: 12)),
-          value: engineMode == EngineMode.direct,
-          onChanged: (v) =>
-              onEngineModeChanged(v ? EngineMode.direct : EngineMode.relay),
-        ),
+        // 🔒 Toggle direct UKRYTY na prod (kDirectModeEnabled=false) do czasu weryfikacji izolacji kont.
+        if (kDirectModeEnabled) ...[
+          const Divider(),
+          const ListTile(
+              title: Text('Storage engine (eksperymentalne)',
+                  style: TextStyle(fontWeight: FontWeight.bold))),
+          SwitchListTile(
+            secondary: const Icon(Icons.cloud_sync),
+            title: const Text('Tryb direct (Google Drive bez relaya)'),
+            subtitle: const Text(
+                'Photos/Files czytają pliki wprost z Twojego Google Drive (drive.file). '
+                'Beta — logowanie Google przy wejściu. Wyłączone = relay (domyślny).',
+                style: TextStyle(fontSize: 12)),
+            value: engineMode == EngineMode.direct,
+            onChanged: (v) =>
+                onEngineModeChanged(v ? EngineMode.direct : EngineMode.relay),
+          ),
+        ],
         const Divider(),
         const ListTile(
             title:
