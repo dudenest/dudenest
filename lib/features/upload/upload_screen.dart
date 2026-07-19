@@ -27,12 +27,18 @@ class UploadScreen extends StatefulWidget {
   /// „Connect Google Drive"; naciśnięcie (user-gesture → popup GIS) buduje `DirectEngine` i zwraca go.
   /// `null` = brak bramy (ścieżka relay). Zwraca `null`, gdy user anuluje. Szew testowy zarazem.
   final Future<StorageEngine?> Function()? onConnect;
+
+  /// Direct: czy istnieje ważny zapisany token (bez popupu). Jeśli tak — auto-connect po wejściu
+  /// na tab (cichy, bo `getDriveAccessToken` zwraca token z cache), więc user nie klika Connect
+  /// za każdym powrotem. `null`/false → brama Connect.
+  final Future<bool> Function()? hasValidToken;
   final int autoPickNonce;
   final UploadFilePicker? picker;
   const UploadScreen(
       {super.key,
       required this.engine,
       this.onConnect,
+      this.hasValidToken,
       this.autoPickNonce = 0,
       this.picker});
   @override
@@ -50,6 +56,12 @@ class _UploadScreenState extends State<UploadScreen> {
   void initState() {
     super.initState();
     _engine = widget.engine;
+    // Direct: jeśli token jest ważny (zapisany), połącz cicho — bez klikania Connect po powrocie na tab.
+    if (_engine == null && widget.onConnect != null && widget.hasValidToken != null) {
+      widget.hasValidToken!().then((ok) {
+        if (ok && mounted && _engine == null && !_connecting) _connect();
+      });
+    }
     if (widget.autoPickNonce > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -206,7 +218,7 @@ class _UploadScreenState extends State<UploadScreen> {
           if (_connectError != null) ...[
             const Icon(Icons.cloud_off, color: Colors.orangeAccent, size: 40),
             const SizedBox(height: 12),
-            Text('Połączenie z Google Drive nie powiodło się.\n$_connectError',
+            Text('Could not connect to Google Drive.\n$_connectError',
                 textAlign: TextAlign.center),
             const SizedBox(height: 16),
           ],
@@ -219,7 +231,7 @@ class _UploadScreenState extends State<UploadScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.cloud),
             label:
-                Text(_connectError != null ? 'Połącz ponownie' : 'Connect Google Drive'),
+                Text(_connectError != null ? 'Reconnect' : 'Connect Google Drive'),
           ),
         ]),
       ),

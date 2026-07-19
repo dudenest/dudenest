@@ -234,6 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 await getDriveAccessToken(); // user-gesture → popup GIS; primuje token per-uid
                 return DirectEngine(accessToken: getDriveAccessToken);
               },
+              hasValidToken: hasValidDriveToken, // cichy auto-connect po powrocie na tab
               autoPickNonce: _uploadNonce)
           : UploadScreen(
               engine: hasRelay ? _relay : null, autoPickNonce: _uploadNonce),
@@ -460,14 +461,14 @@ class SettingsScreen extends StatelessWidget {
         if (kDirectModeEnabled) ...[
           const Divider(),
           const ListTile(
-              title: Text('Storage engine (eksperymentalne)',
+              title: Text('Storage engine (experimental)',
                   style: TextStyle(fontWeight: FontWeight.bold))),
           SwitchListTile(
             secondary: const Icon(Icons.cloud_sync),
-            title: const Text('Tryb direct (Google Drive bez relaya)'),
+            title: const Text('Direct mode (Google Drive without relay)'),
             subtitle: const Text(
-                'Photos/Files czytają pliki wprost z Twojego Google Drive (drive.file). '
-                'Beta — logowanie Google przy wejściu. Wyłączone = relay (domyślny).',
+                'Photos/Files read files straight from your Google Drive (drive.file). '
+                'Beta — Google sign-in on entry. Off = relay (default).',
                 style: TextStyle(fontSize: 12)),
             value: engineMode == EngineMode.direct,
             onChanged: (v) =>

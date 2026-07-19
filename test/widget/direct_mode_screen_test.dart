@@ -78,16 +78,16 @@ void main() {
     await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => _FakeEngine(files: []))));
     await t.tap(find.text('Connect Google Drive'));
     await t.pumpAndSettle();
-    expect(find.textContaining('Brak plików utworzonych'), findsOneWidget);
+    expect(find.textContaining('No files created'), findsOneWidget);
     expect(find.byType(GalleryScreen), findsNothing);
   });
 
-  testWidgets('connect → wyjątek (np. 401) → stan błędu + Połącz ponownie', (t) async {
+  testWidgets('connect → wyjątek (np. 401) → stan błędu + Reconnect', (t) async {
     await t.pumpWidget(_wrap(DirectModeScreen(
         folder: 'photos', engineBuilder: () => _FakeEngine(throwOnList: StorageException('401', statusCode: 401)))));
     await t.tap(find.text('Connect Google Drive'));
     await t.pumpAndSettle();
-    expect(find.text('Połącz ponownie'), findsOneWidget);
+    expect(find.text('Reconnect'), findsOneWidget);
     expect(find.byType(GalleryScreen), findsNothing);
   });
 
@@ -113,7 +113,7 @@ void main() {
         folder: 'photos', engineBuilder: () => engine, filePicker: () async => picked)));
     await t.tap(find.text('Connect Google Drive'));
     await t.pumpAndSettle();
-    expect(find.textContaining('Brak plików'), findsOneWidget); // start: pusto
+    expect(find.textContaining('No files'), findsOneWidget); // start: pusto
     expect(find.text('Upload'), findsOneWidget); // FAB widoczny po połączeniu
     await t.tap(find.text('Upload'));
     await t.pumpAndSettle();
@@ -132,7 +132,7 @@ void main() {
     await t.pumpAndSettle();
     await t.longPress(find.byType(Image).first); // wejście w selekcję
     await t.pumpAndSettle();
-    expect(find.text('1 zaznaczono'), findsOneWidget);
+    expect(find.text('1 selected'), findsOneWidget);
     expect(find.byIcon(Icons.delete), findsOneWidget);
     expect(find.text('Upload'), findsNothing); // FAB ukryty w selekcji
   });
@@ -146,10 +146,10 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.byIcon(Icons.delete)); // otwiera confirm dialog
     await t.pumpAndSettle();
-    await t.tap(find.text('Usuń')); // potwierdź
+    await t.tap(find.text('Delete')); // potwierdź
     await t.pumpAndSettle();
     expect(engine.deleted, ['p1']); // deleteFile wywołany dla zaznaczonego id
-    expect(find.textContaining('Brak plików'), findsOneWidget); // re-list → pusto
+    expect(find.textContaining('No files'), findsOneWidget); // re-list → pusto
   });
 
   testWidgets('delete anulowany → engine.deleteFile NIE wywołany', (t) async {
@@ -161,7 +161,7 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.byIcon(Icons.delete));
     await t.pumpAndSettle();
-    await t.tap(find.text('Anuluj')); // rezygnacja
+    await t.tap(find.text('Cancel')); // rezygnacja
     await t.pumpAndSettle();
     expect(engine.deleted, isEmpty);
     expect(find.byType(GalleryScreen), findsOneWidget); // plik nadal jest

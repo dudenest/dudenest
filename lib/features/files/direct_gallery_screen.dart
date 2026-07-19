@@ -38,7 +38,7 @@ class _DirectGalleryScreenState extends State<DirectGalleryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Google Drive (direct, bez relaya)')),
+      appBar: AppBar(title: const Text('Google Drive (direct, no relay)')),
       body: _buildBody(),
     );
   }
@@ -52,9 +52,9 @@ class _DirectGalleryScreenState extends State<DirectGalleryScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.error_outline, color: Colors.redAccent, size: 40),
             const SizedBox(height: 12),
-            Text('Błąd: $_error', textAlign: TextAlign.center),
+            Text('Error: $_error', textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _connect, child: const Text('Spróbuj ponownie')),
+            ElevatedButton(onPressed: _connect, child: const Text('Retry')),
           ]),
         ),
       );
@@ -70,7 +70,7 @@ class _DirectGalleryScreenState extends State<DirectGalleryScreen> {
       );
     }
     if (files.isEmpty) {
-      return const Center(child: Text('Brak plików utworzonych przez tę aplikację (drive.file).'));
+      return const Center(child: Text('No files created by this app (drive.file).'));
     }
     final engine = _engine!;
     return GridView.builder(

@@ -140,4 +140,27 @@ void main() {
     expect(find.text('Connect Google Drive'), findsOneWidget);
     expect(find.text('Pick files'), findsNothing);
   });
+
+  testWidgets('direct: ważny token → auto-connect (bez klikania Connect)',
+      (tester) async {
+    final engine = _FakeEngine();
+    await tester.pumpWidget(_wrap(UploadScreen(
+        engine: null,
+        onConnect: () async => engine,
+        hasValidToken: () async => true)));
+    await tester.pumpAndSettle();
+    expect(find.text('Pick files'), findsOneWidget); // od razu, bez bramy
+    expect(find.text('Connect Google Drive'), findsNothing);
+  });
+
+  testWidgets('direct: brak ważnego tokenu → zostaje brama Connect',
+      (tester) async {
+    await tester.pumpWidget(_wrap(UploadScreen(
+        engine: null,
+        onConnect: () async => _FakeEngine(),
+        hasValidToken: () async => false)));
+    await tester.pumpAndSettle();
+    expect(find.text('Connect Google Drive'), findsOneWidget);
+    expect(find.text('Pick files'), findsNothing);
+  });
 }

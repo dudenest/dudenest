@@ -60,6 +60,7 @@ class _RelayScreenState extends State<RelayScreen> {
     'png',
     'gif',
     'webp',
+    'avif',
     'bmp',
     'heic',
     'heif'

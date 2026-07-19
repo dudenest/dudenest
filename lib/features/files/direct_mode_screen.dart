@@ -23,7 +23,7 @@ class DirectModeScreen extends StatefulWidget {
 
 // Lokalne helpery rodzaju pliku (RelayScreen/media_viewer mają własne kopie — świadoma, drobna
 // duplikacja, by NIE dotykać ścieżki relay; ewentualny wspólny util = osobny dług).
-const _imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif'};
+const _imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'heic', 'heif'};
 const _videoExts = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp', 'wmv', 'flv'};
 bool _isImage(String n) => _imageExts.contains(n.split('.').last.toLowerCase());
 bool _isVideo(String n) => _videoExts.contains(n.split('.').last.toLowerCase());
@@ -107,7 +107,7 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
       await _reload();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Wgrano ${jobs.length} plik(ów) do Google Drive.')));
+            SnackBar(content: Text('Uploaded ${jobs.length} file(s) to Google Drive.')));
       }
     } catch (e) {
       if (!mounted) return;
@@ -129,14 +129,14 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Usuń pliki'),
-        content: Text('Usunąć $count plik(ów) z Google Drive?'),
+        title: const Text('Delete files'),
+        content: Text('Delete $count file(s) from Google Drive?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Anuluj')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Usuń')),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -155,8 +155,8 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(failed == 0
-          ? 'Usunięto $count plik(ów).'
-          : '$failed z $count usunięć nie powiodło się.'),
+          ? 'Deleted $count file(s).'
+          : '$failed of $count deletions failed.'),
       backgroundColor: failed == 0 ? Colors.green : Colors.red,
     ));
   }
@@ -166,7 +166,7 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     final engine = _engine;
     if (engine == null || !_isImage(name)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Podgląd wideo i plików nie-obrazowych: wkrótce (tryb direct MVP).')));
+          content: Text('Preview of videos and non-image files: coming soon (direct mode MVP).')));
       return;
     }
     Navigator.push(context, MaterialPageRoute(
@@ -182,18 +182,18 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
           ? AppBar(
               leading: IconButton(
                   icon: const Icon(Icons.close),
-                  tooltip: 'Wyczyść zaznaczenie',
+                  tooltip: 'Clear selection',
                   onPressed: () => setState(() => _selected.clear())),
-              title: Text('${_selected.length} zaznaczono'),
+              title: Text('${_selected.length} selected'),
               actions: [
                 IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
-                    tooltip: 'Usuń',
+                    tooltip: 'Delete',
                     onPressed: _loading ? null : _deleteSelected),
               ])
           : AppBar(title: Text(title), actions: [
               if (_files != null)
-                IconButton(icon: const Icon(Icons.refresh), tooltip: 'Odśwież', onPressed: _loading ? null : _reload),
+                IconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh', onPressed: _loading ? null : _reload),
             ]),
       body: _body(),
       floatingActionButton: (_files != null && !selecting)
@@ -211,7 +211,7 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     final files = _files;
     if (files == null) return _connectGate();
     if (files.isEmpty) {
-      return const Center(child: Text('Brak plików utworzonych przez tę aplikację (drive.file).'));
+      return const Center(child: Text('No files created by this app (drive.file).'));
     }
     return GalleryScreen(
       files: files,
@@ -241,9 +241,9 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.cloud_off, color: Colors.orangeAccent, size: 40),
             const SizedBox(height: 12),
-            Text('Połączenie z Google Drive nie powiodło się.\n$_error', textAlign: TextAlign.center),
+            Text('Could not connect to Google Drive.\n$_error', textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _connect, child: const Text('Połącz ponownie')),
+            ElevatedButton(onPressed: _connect, child: const Text('Reconnect')),
           ]),
         ),
       );
