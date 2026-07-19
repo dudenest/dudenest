@@ -214,12 +214,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final direct = kDirectModeEnabled && _engineMode == EngineMode.direct;
     final screens = [
       direct
-          ? const DirectModeScreen(folder: 'photos')
+          // ValueKey per folder: bez tego Flutter reużywa TEN SAM State między zakładkami Photos↔Files
+          // (ta sama pozycja+typ w drzewie) → `_files` nie przefiltrowuje się przy zmianie folder →
+          // obie zakładki pokazują to samo. Odrębny klucz = odrębny State = poprawny filtr per folder.
+          ? const DirectModeScreen(key: ValueKey('direct-photos'), folder: 'photos')
           : hasRelay
               ? RelayScreen(relay: _relay, folder: 'photos')
               : _PlaceholderPhotosScreen(onUpload: _openUpload),
       direct
-          ? const DirectModeScreen(folder: 'files')
+          ? const DirectModeScreen(key: ValueKey('direct-files'), folder: 'files')
           : hasRelay
               ? RelayScreen(relay: _relay, folder: 'files')
               : _RelayRequiredPlaceholder(

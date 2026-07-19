@@ -108,6 +108,23 @@ void main() {
     expect(find.byType(GalleryScreen), findsNothing);
   });
 
+  testWidgets('ValueKey per folder → osobny State (Photos≠Files, nie reużywa stanu)', (t) async {
+    // Regresja (3): bez klucza Flutter reużywa State między zakładkami → obie pokazują to samo.
+    // Z ValueKey('direct-<folder>') przełączenie tworzy NOWY State (wraca connect-gate) i filtruje poprawnie.
+    Widget screen(String folder) => DirectModeScreen(
+        key: ValueKey('direct-$folder'), folder: folder,
+        engineBuilder: () => _FakeEngine(files: [photo, doc]));
+    await t.pumpWidget(_wrap(screen('photos')));
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    expect(t.widget<GalleryScreen>(find.byType(GalleryScreen)).files.length, 1); // photos: tylko jpg
+    await t.pumpWidget(_wrap(screen('files'))); // przełącz zakładkę (ten sam typ, INNY klucz)
+    expect(find.text('Connect Google Drive'), findsOneWidget); // NOWY State → znów gate (dowód nie-reużycia)
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    expect(t.widget<GalleryScreen>(find.byType(GalleryScreen)).files.length, 2); // files: wszystko
+  });
+
   testWidgets('folder=files → wszystko (filtr)', (t) async {
     await t.pumpWidget(_wrap(DirectModeScreen(folder: 'files', engineBuilder: () => _FakeEngine(files: [photo, doc]))));
     await t.tap(find.text('Connect Google Drive'));

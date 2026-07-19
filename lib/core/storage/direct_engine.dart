@@ -249,15 +249,18 @@ class DirectEngine implements StorageEngine {
         link = data['thumbnailLink'] as String?;
         if (link != null) _thumbLinks[fileId] = link;
       }
+      print('[dnest-diag] thumb $fileId size=$size thumbnailLink=${link == null ? "NULL" : "present"}');
       if (link != null) {
         // thumbnailLink = podpisany URL lh3 z suffiksem rozmiaru `=sN`.
         final sized = link.replaceFirst(RegExp(r'=s\d+(-c)?$'), '=s$size');
         final resp = await _http.get(Uri.parse(sized));
+        print('[dnest-diag] thumb $fileId lh3status=${resp.statusCode} bytes=${resp.bodyBytes.length}');
         if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) return resp.bodyBytes;
       }
-    } catch (_) {
-      // każdy błąd (metadata/lh3/CORS) → fallback niżej
+    } catch (e) {
+      print('[dnest-diag] thumb $fileId ERROR: $e'); // metadata/lh3/CORS → fallback niżej
     }
+    print('[dnest-diag] thumb $fileId → fallback raw downloadFile (CanvasKit może nie zdekodować avif/heic)');
     // Fallback na oryginał (alt=media, sprawdzony): gdy brak thumbnailLink (świeży upload) LUB lh3
     // zawiodło (CORS/403/pusty). Gwarantuje render miniatury zamiast broken_image; cover-fit skaluje.
     return downloadFile(fileId);

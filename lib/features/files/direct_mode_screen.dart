@@ -57,22 +57,30 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   //     cudze konto). Mismatch/fail → brama Connect. Login GitHub/Apple/demo → brama (brak konta Google).
   Future<void> _autoConnect() async {
     if (await hasValidDriveToken()) {
+      debugPrint('[dnest-diag] autoConnect: cached token → connect');
       if (mounted && _files == null && !_loading) _connect();
       return;
     }
     final u = AuthService().user;
-    if (u == null || u.provider != 'google' || u.email.isEmpty) return; // → brama Connect
+    debugPrint('[dnest-diag] autoConnect: provider=${u?.provider} email=${u?.email}');
+    if (u == null || u.provider != 'google' || u.email.isEmpty) {
+      debugPrint('[dnest-diag] autoConnect: gate (nie-Google/brak email)');
+      return; // → brama Connect
+    }
     try {
       await getDriveAccessToken(silent: true, hint: u.email); // bez popupu; rzuca gdy brak cichej zgody
+      debugPrint('[dnest-diag] autoConnect: silent token OK');
       final driveEmail =
           await DirectEngine(accessToken: getDriveAccessToken).driveAccountEmail();
-      if (driveEmail.toLowerCase() != u.email.toLowerCase()) {
-        await clearDriveToken(); // cudze konto Google → NIE używaj
+      final match = driveEmail.toLowerCase() == u.email.toLowerCase();
+      debugPrint('[dnest-diag] autoConnect: driveEmail="$driveEmail" userEmail="${u.email}" match=$match');
+      if (!match) {
+        await clearDriveToken(); // cudze/nieznane konto Google → NIE używaj
         return; // → brama Connect
       }
       if (mounted && _files == null && !_loading) _connect();
-    } catch (_) {
-      // brak cichej zgody (sesja/cookies/pierwsza zgoda) → brama Connect
+    } catch (e) {
+      debugPrint('[dnest-diag] autoConnect: silent/verify FAILED: $e'); // dyskryminuje silent-fail vs verify-fail
     }
   }
 
