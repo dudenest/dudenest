@@ -38,6 +38,8 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   List<Map<String, dynamic>>? _files;
   String? _error;
   bool _loading = false;
+  final Set<String> _selected = {}; // multi-select do usuwania (parytet z relay path)
+  bool get _selectionMode => _selected.isNotEmpty;
 
   @override
   void initState() {
@@ -77,7 +79,7 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   Future<void> _reload() async {
     final engine = _engine;
     if (engine == null) return _connect();
-    setState(() { _loading = true; _error = null; });
+    setState(() { _loading = true; _error = null; _selected.clear(); });
     try {
       final files = (await engine.listFiles()).where(_matchesFolder).toList(growable: false);
       if (!mounted) return;
@@ -113,6 +115,52 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     }
   }
 
+  void _toggleSelect(String id) => setState(() {
+        if (!_selected.remove(id)) _selected.add(id);
+      });
+
+  // Usuń zaznaczone WPROST z Google Drive (DirectEngine.deleteFile → Drive REST) → re-list.
+  // Parytet z relay path (_deleteSelected w relay_screen). Confirm dialog bo operacja destrukcyjna.
+  Future<void> _deleteSelected() async {
+    final count = _selected.length;
+    if (count == 0) return;
+    final engine = _engine;
+    if (engine == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Usuń pliki'),
+        content: Text('Usunąć $count plik(ów) z Google Drive?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Anuluj')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Usuń')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final ids = Set<String>.from(_selected);
+    setState(() { _loading = true; _error = null; _selected.clear(); });
+    int failed = 0;
+    for (final id in ids) {
+      try {
+        await engine.deleteFile(id);
+      } catch (_) {
+        failed++;
+      }
+    }
+    await _reload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(failed == 0
+          ? 'Usunięto $count plik(ów).'
+          : '$failed z $count usunięć nie powiodło się.'),
+      backgroundColor: failed == 0 ? Colors.green : Colors.red,
+    ));
+  }
+
   // MVP: tap na obrazie → pełny podgląd przez StorageEngine.original. Wideo/pliki nie-obrazowe odroczone.
   void _openImage(String id, String name) {
     final engine = _engine;
@@ -128,13 +176,27 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   @override
   Widget build(BuildContext context) {
     final title = widget.folder == 'files' ? 'Files (direct)' : 'Photos (direct)';
+    final selecting = _selectionMode;
     return Scaffold(
-      appBar: AppBar(title: Text(title), actions: [
-        if (_files != null)
-          IconButton(icon: const Icon(Icons.refresh), tooltip: 'Odśwież', onPressed: _loading ? null : _reload),
-      ]),
+      appBar: selecting
+          ? AppBar(
+              leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Wyczyść zaznaczenie',
+                  onPressed: () => setState(() => _selected.clear())),
+              title: Text('${_selected.length} zaznaczono'),
+              actions: [
+                IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    tooltip: 'Usuń',
+                    onPressed: _loading ? null : _deleteSelected),
+              ])
+          : AppBar(title: Text(title), actions: [
+              if (_files != null)
+                IconButton(icon: const Icon(Icons.refresh), tooltip: 'Odśwież', onPressed: _loading ? null : _reload),
+            ]),
       body: _body(),
-      floatingActionButton: _files != null
+      floatingActionButton: (_files != null && !selecting)
           ? FloatingActionButton.extended(
               onPressed: _loading ? null : _upload,
               icon: const Icon(Icons.upload),
@@ -155,10 +217,10 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
       files: files,
       relay: _engine!,
       settings: GallerySettings(),
-      selected: const <String>{},
-      selectionMode: false,
+      selected: _selected,
+      selectionMode: _selectionMode,
       onOpen: _openImage,
-      onToggleSelect: (_) {},
+      onToggleSelect: _toggleSelect,
       isImage: _isImage,
       isVideo: _isVideo,
       fileIcon: _fileIcon,

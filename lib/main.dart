@@ -18,6 +18,7 @@ import 'features/relay/relay_management_screen.dart';
 import 'features/files/gallery_settings.dart';
 import 'features/files/direct_mode_screen.dart';
 import 'core/storage/engine_config.dart';
+import 'core/storage/direct_engine.dart';
 import 'core/oauth/google_drive_auth.dart';
 
 // Direct mode (E3): izolacja kont ZWERYFIKOWANA 2026-07-19 w 2 izolowanych profilach (Dudenest email ==
@@ -223,8 +224,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ? RelayScreen(relay: _relay, folder: 'files')
               : _RelayRequiredPlaceholder(
                   message: _relayError ?? 'No relay assigned to this account'),
-      UploadScreen(
-          relay: hasRelay ? _relay : null, autoPickNonce: _uploadNonce),
+      direct
+          ? UploadScreen(
+              // Direct: bez gotowego silnika — brama connect buduje DirectEngine po user-gesture.
+              // Token NIE trzymany w HomeScreen (to był kształt wycieku cross-account) — DirectEngine
+              // dostaje tylko funkcję getDriveAccessToken (wiązanie per-uid żyje w niej).
+              engine: null,
+              onConnect: () async {
+                await getDriveAccessToken(); // user-gesture → popup GIS; primuje token per-uid
+                return DirectEngine(accessToken: getDriveAccessToken);
+              },
+              autoPickNonce: _uploadNonce)
+          : UploadScreen(
+              engine: hasRelay ? _relay : null, autoPickNonce: _uploadNonce),
       SettingsScreen(
           relay: hasRelay ? _relay : null,
           relayUrl: _relayUrl,

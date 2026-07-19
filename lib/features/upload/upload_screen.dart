@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../core/network/relay_client.dart';
+import '../../core/storage/storage_engine.dart';
 import '../../main.dart';
 
 typedef UploadFilePicker = Future<FilePickerResult?> Function();
@@ -20,11 +20,21 @@ class _UploadJob {
 }
 
 class UploadScreen extends StatefulWidget {
-  final RelayClient? relay;
+  /// Silnik storage gotowy do uploadu (relay: `RelayClient`; direct: dopiero po connect → null).
+  final StorageEngine? engine;
+
+  /// Connect-gate dla trybu direct: gdy `engine==null` i `onConnect!=null`, ekran pokazuje
+  /// „Connect Google Drive"; naciśnięcie (user-gesture → popup GIS) buduje `DirectEngine` i zwraca go.
+  /// `null` = brak bramy (ścieżka relay). Zwraca `null`, gdy user anuluje. Szew testowy zarazem.
+  final Future<StorageEngine?> Function()? onConnect;
   final int autoPickNonce;
   final UploadFilePicker? picker;
   const UploadScreen(
-      {super.key, required this.relay, this.autoPickNonce = 0, this.picker});
+      {super.key,
+      required this.engine,
+      this.onConnect,
+      this.autoPickNonce = 0,
+      this.picker});
   @override
   State<UploadScreen> createState() => _UploadScreenState();
 }
@@ -32,10 +42,14 @@ class UploadScreen extends StatefulWidget {
 class _UploadScreenState extends State<UploadScreen> {
   final List<_UploadJob> _jobs = [];
   Timer? _ticker;
+  StorageEngine? _engine; // relay: od razu = widget.engine; direct: po connect
+  bool _connecting = false;
+  String? _connectError;
 
   @override
   void initState() {
     super.initState();
+    _engine = widget.engine;
     if (widget.autoPickNonce > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -48,8 +62,39 @@ class _UploadScreenState extends State<UploadScreen> {
   @override
   void didUpdateWidget(covariant UploadScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Zmiana silnika z zewnątrz (przypisano relay, albo przełączono relay↔direct) → zresetuj stan.
+    // Direct zawsze przekazuje engine==null, więc zwykłe rebuildy NIE gubią połączonego _engine.
+    if (!identical(widget.engine, oldWidget.engine)) {
+      _engine = widget.engine;
+      _connectError = null;
+    }
     if (widget.autoPickNonce != oldWidget.autoPickNonce) {
       unawaited(_pick());
+    }
+  }
+
+  // Direct connect-gate: user-gesture buduje DirectEngine (popup GIS w oknie gestu). Token NIE jest
+  // tu przechowywany — DirectEngine trzyma tylko funkcję getDriveAccessToken (wiązanie per-uid w niej).
+  Future<void> _connect() async {
+    final onConnect = widget.onConnect;
+    if (onConnect == null || _connecting) return;
+    setState(() {
+      _connecting = true;
+      _connectError = null;
+    });
+    try {
+      final e = await onConnect();
+      if (!mounted) return;
+      setState(() {
+        _engine = e; // null = user anulował → zostajemy na bramie
+        _connecting = false;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _connectError = '$err';
+        _connecting = false;
+      });
     }
   }
 
@@ -81,12 +126,15 @@ class _UploadScreenState extends State<UploadScreen> {
 
   Future<void> _uploadJob(_UploadJob job) async {
     try {
-      final relay = widget.relay;
-      if (relay == null) {
+      final engine = _engine;
+      if (engine == null) {
         throw 'Relay is required before uploading. Install or assign a relay in Settings.';
       }
-      final strategy = DudenestApp.of(context).storageStrategy;
-      await relay.uploadFile(job.name, job.bytes, strategy: strategy);
+      // Defensywnie: bez przodka DudenestApp (np. w teście) użyj domyślnej 'Replica' — jedynej
+      // wspieranej od relay v0.21.0 — zamiast rzucać. W produkcji przodek zawsze jest.
+      final strategy =
+          context.findAncestorStateOfType<DudenestAppState>()?.storageStrategy ?? 'Replica';
+      await engine.uploadFile(job.name, job.bytes, strategy: strategy);
       if (mounted) {
         setState(() {
           job.progress = 1.0;
@@ -103,6 +151,9 @@ class _UploadScreenState extends State<UploadScreen> {
   }
 
   Future<void> _pick() async {
+    // Direct przed connect: nie otwieraj pickera (brama). Relay bez silnika: zachowanie legacy —
+    // picker otwiera się, a job failuje z „Relay is required" (parytet ze starą ścieżką relay).
+    if (_engine == null && widget.onConnect != null) return;
     final res = await (widget.picker ??
         () => FilePicker.platform
             .pickFiles(withData: true, allowMultiple: true))();
@@ -140,7 +191,42 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
         ],
       ),
-      body: Column(children: [
+      // Brama connect TYLKO dla direct (onConnect!=null). Relay-path — także bez relaya — zawsze
+      // pokazuje UI uploadu; brak relaya failuje per-job (parytet ze starą ścieżką relay).
+      body: (_engine == null && widget.onConnect != null) ? _gate() : _uploadBody(),
+    );
+  }
+
+  // Direct connect-gate: „Connect Google Drive" (+ retry po błędzie).
+  Widget _gate() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (_connectError != null) ...[
+            const Icon(Icons.cloud_off, color: Colors.orangeAccent, size: 40),
+            const SizedBox(height: 12),
+            Text('Połączenie z Google Drive nie powiodło się.\n$_connectError',
+                textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+          ],
+          ElevatedButton.icon(
+            onPressed: _connecting ? null : _connect,
+            icon: _connecting
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.cloud),
+            label:
+                Text(_connectError != null ? 'Połącz ponownie' : 'Connect Google Drive'),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _uploadBody() => Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: SizedBox(
@@ -162,9 +248,7 @@ class _UploadScreenState extends State<UploadScreen> {
                       _JobCard(job: _jobs[i], fmtSize: _fmtSize),
                 ),
         ),
-      ]),
-    );
-  }
+      ]);
 }
 
 class _JobCard extends StatelessWidget {

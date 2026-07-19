@@ -726,7 +726,7 @@ class _RelayScreenState extends State<RelayScreen> {
           ? FloatingActionButton.extended(
               onPressed: () async {
                 await Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => UploadScreen(relay: widget.relay)));
+                    MaterialPageRoute(builder: (_) => UploadScreen(engine: widget.relay)));
                 _load(); // refresh /files when the user returns
               },
               icon: const Icon(Icons.upload_file),
@@ -849,7 +849,7 @@ class _NoFilesEmptyState extends StatelessWidget {
               await Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => UploadScreen(relay: relay)));
+                      builder: (_) => UploadScreen(engine: relay)));
               onUploaded(); // refresh /files when user returns
             },
           ),
