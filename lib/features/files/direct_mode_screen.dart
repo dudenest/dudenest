@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../core/auth/auth_service.dart';
 import '../../core/oauth/google_drive_auth.dart';
 import '../../core/storage/direct_engine.dart';
 import '../../core/storage/storage_engine.dart';
@@ -39,7 +38,6 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   List<Map<String, dynamic>>? _files;
   String? _error;
   bool _loading = false;
-  String? _driveEmail; // DEBUG: email konta Drive (z tokenu) — do weryfikacji izolacji kont
 
   @override
   void initState() {
@@ -67,9 +65,8 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
       final engine = widget.engineBuilder?.call() ?? DirectEngine(accessToken: getDriveAccessToken);
       final all = await engine.listFiles(); // OAuth GIS → Drive REST, bez relaya
       final files = all.where(_matchesFolder).toList(growable: false);
-      final email = engine is DirectEngine ? await engine.driveAccountEmail() : null; // DEBUG
       if (!mounted) return;
-      setState(() { _engine = engine; _files = files; _driveEmail = email; _loading = false; });
+      setState(() { _engine = engine; _files = files; _loading = false; });
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = '$e'; _loading = false; }); // obejmuje 401 po wygaśnięciu tokenu → retry
@@ -136,10 +133,7 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
         if (_files != null)
           IconButton(icon: const Icon(Icons.refresh), tooltip: 'Odśwież', onPressed: _loading ? null : _reload),
       ]),
-      body: Column(children: [
-        if (_engine != null) _debugBanner(),
-        Expanded(child: _body()),
-      ]),
+      body: _body(),
       floatingActionButton: _files != null
           ? FloatingActionButton.extended(
               onPressed: _loading ? null : _upload,
@@ -168,23 +162,6 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
       isImage: _isImage,
       isVideo: _isVideo,
       fileIcon: _fileIcon,
-    );
-  }
-
-  // DEBUG (diagnostyka izolacji kont): pokazuje email konta Dudenest vs email konta Drive. Mismatch
-  // = konto Drive różne od loginu Dudenest (może być zamierzone, ale krytyczne przy teście punktu 2).
-  Widget _debugBanner() {
-    final dude = AuthService().user?.email ?? '?';
-    final drive = _driveEmail ?? '…';
-    final mismatch = _driveEmail != null && dude != drive;
-    return Container(
-      width: double.infinity,
-      color: mismatch ? const Color(0xFF7F1D1D) : const Color(0xFF1F2937),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Text(
-        'DEBUG  Dudenest: $dude   |   Drive: $drive${mismatch ? '   ⚠ RÓŻNE KONTA' : ''}',
-        style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.white),
-      ),
     );
   }
 

@@ -1,6 +1,14 @@
 # Direct Mode (E3) — stan, bezpieczeństwo i procedura testu izolacji
 
-**Data**: 2026-07-19 · **Autor**: Dariusz Porczyński · **Status**: 🔒 UKRYTY na prod, izolacja NIEZWERYFIKOWANA
+**Data**: 2026-07-19 · **Autor**: Dariusz Porczyński · **Status**: ✅ WŁĄCZONE (beta), izolacja ZWERYFIKOWANA
+
+> **✅ WYNIK WERYFIKACJI (2026-07-19)** — test w 2 izolowanych profilach (dwie maszyny, każda jedno konto
+> Google) przeszedł: banner debug pokazał `Dudenest email == Drive email` na obu (darek↔darek,
+> visaroy↔visaroy), zero „⚠ RÓŻNE KONTA", żaden profil nie widział plików drugiego. Punkt 2
+> („Settings=A, Photos=B jednocześnie") **NIE odtworzył się** na izolowanych maszynach → był artefaktem
+> współdzielonej przeglądarki (login Dudenest cicho bierze domyślne konto Google — §2, osobny wątek od
+> direct mode), nie wyciekiem tokenu Drive. **Direct włączony** (`kDirectModeEnabled=true`), banner debug
+> i brama `?e3ctest=1` USUNIĘTE. Poniższa procedura testu zachowana jako referencja na przyszłe zmiany.
 
 Ten dokument jest handoverem dla agenta kontynuującego pracę nad „direct mode" (Photos/Files czytają
 Google Drive bezpośrednio, bez relaya). **Przeczytaj przed dotknięciem czegokolwiek w `lib/features/files/direct_mode_screen.dart`, `lib/core/oauth/google_drive_auth_web.dart`, `lib/core/storage/direct_engine.dart` lub flagi `kDirectModeEnabled` w `lib/main.dart`.**
