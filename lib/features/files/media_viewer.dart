@@ -35,7 +35,7 @@ class _MediaViewerState extends State<MediaViewer> with TickerProviderStateMixin
   Timer? _overlayTimer;
   late final AnimationController _overlayAnim;
 
-  static const _imageExts = {'jpg','jpeg','png','gif','webp','bmp','heic','heif'};
+  static const _imageExts = {'jpg','jpeg','png','gif','webp','avif','bmp','heic','heif'};
   static const _videoExts = {'mp4','mov','avi','mkv','webm','m4v','3gp','wmv','flv'};
 
   bool _isImage(String name) => _imageExts.contains(name.split('.').last.toLowerCase());

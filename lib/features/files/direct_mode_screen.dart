@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../core/auth/auth_service.dart';
 import '../../core/oauth/google_drive_auth.dart';
 import '../../core/storage/direct_engine.dart';
 import '../../core/storage/storage_engine.dart';
@@ -23,7 +24,7 @@ class DirectModeScreen extends StatefulWidget {
 
 // Lokalne helpery rodzaju pliku (RelayScreen/media_viewer mają własne kopie — świadoma, drobna
 // duplikacja, by NIE dotykać ścieżki relay; ewentualny wspólny util = osobny dług).
-const _imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif'};
+const _imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'heic', 'heif'};
 const _videoExts = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp', 'wmv', 'flv'};
 bool _isImage(String n) => _imageExts.contains(n.split('.').last.toLowerCase());
 bool _isVideo(String n) => _videoExts.contains(n.split('.').last.toLowerCase());
@@ -44,12 +45,34 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   @override
   void initState() {
     super.initState();
-    // Po reloadzie strony: jeśli token drive.file przetrwał (SharedPreferences), połącz od razu —
-    // bez connect-gate i bez popupu GIS. Tylko realna ścieżka GIS (engineBuilder==null); w testach nie.
-    if (widget.engineBuilder == null) {
-      hasValidDriveToken().then((ok) {
-        if (ok && mounted && _files == null && !_loading) _connect();
-      });
+    // Auto-połączenie po wejściu → /photos ładuje się OD RAZU (parytet z relayem), bez klikania Connect.
+    // Tylko realna ścieżka GIS (engineBuilder==null; w testach pomijane).
+    if (widget.engineBuilder == null) _autoConnect();
+  }
+
+  // Połącz bez klikania Connect:
+  //  1) mamy już ważny NASZ token (przetrwał reload) → połącz;
+  //  2) login Google → cichy token (prompt:'', BEZ popupu/gestu) z hint=email usera, POTEM weryfikacja
+  //     że konto Drive == konto Dudenest (ochrona: w współdzielonej przeglądarce silent GIS mógłby dać
+  //     cudze konto). Mismatch/fail → brama Connect. Login GitHub/Apple/demo → brama (brak konta Google).
+  Future<void> _autoConnect() async {
+    if (await hasValidDriveToken()) {
+      if (mounted && _files == null && !_loading) _connect();
+      return;
+    }
+    final u = AuthService().user;
+    if (u == null || u.provider != 'google' || u.email.isEmpty) return; // → brama Connect
+    try {
+      await getDriveAccessToken(silent: true, hint: u.email); // bez popupu; rzuca gdy brak cichej zgody
+      final driveEmail =
+          await DirectEngine(accessToken: getDriveAccessToken).driveAccountEmail();
+      if (driveEmail.toLowerCase() != u.email.toLowerCase()) {
+        await clearDriveToken(); // cudze konto Google → NIE używaj
+        return; // → brama Connect
+      }
+      if (mounted && _files == null && !_loading) _connect();
+    } catch (_) {
+      // brak cichej zgody (sesja/cookies/pierwsza zgoda) → brama Connect
     }
   }
 

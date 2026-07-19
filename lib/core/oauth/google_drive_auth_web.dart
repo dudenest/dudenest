@@ -24,7 +24,7 @@ extension type _GisTokenResponse(JSObject _) implements JSObject {
 // realnym połączeniu, żeby user świadomie wybrał konto (bez cichego użycia domyślnego konta przeglądarki
 // — to była luka: zalogowany do Dudenest jako A, przeglądarka aktywna na Google B → cichy Drive B).
 extension type _GisOverride._(JSObject _) implements JSObject {
-  external factory _GisOverride({String prompt});
+  external factory _GisOverride({String prompt, String hint});
 }
 
 extension type _GisTokenClient(JSObject _) implements JSObject {
@@ -93,7 +93,11 @@ Future<bool> hasValidDriveToken() async {
 /// Zwraca access token `drive.file` dla BIEŻĄCEGO użytkownika Dudenest. Kolejność: pamięć (jego) →
 /// SharedPreferences (jego, przetrwa reload) → popup zgody Google (user-gesture). Rzuca, jeśli GIS
 /// niezaładowane lub user odmówił.
-Future<String> getDriveAccessToken() async {
+/// [silent] = próba cichego pozyskania (`prompt:''`, BEZ popupu i BEZ user-gesture) — używane do
+/// auto-połączenia po loginie. Gdy Google nie może przyznać cicho → rzuca (bez UI). [hint] = email
+/// konta Google do wskazania (pinuje konto; i tak weryfikujemy je przez Drive `/about` u wołającego).
+/// Bez [silent] = interaktywnie z `select_account` (wymaga gestu — przycisk Connect / toggle).
+Future<String> getDriveAccessToken({bool silent = false, String? hint}) async {
   final uid = _uid();
   if (_memHit(uid)) return _cachedToken!; // brak popupu (upload/miniatury)
   final prefs = await SharedPreferences.getInstance();
@@ -134,6 +138,9 @@ Future<String> getDriveAccessToken() async {
     scope: driveFileScope,
     callback: onToken.toJS,
   ));
-  client.requestAccessToken(_GisOverride(prompt: 'select_account')); // zawsze pytaj, które konto Google
+  // silent → prompt:'' (bez UI, bez gestu; błąd gdy Google nie przyzna cicho). interaktywnie →
+  // select_account (świadomy wybór konta). hint pinuje konto Google (weryfikacja i tak po stronie wołającego).
+  client.requestAccessToken(
+      _GisOverride(prompt: silent ? '' : 'select_account', hint: hint ?? ''));
   return completer.future;
 }

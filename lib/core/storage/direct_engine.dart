@@ -160,6 +160,18 @@ class DirectEngine implements StorageEngine {
     }
   }
 
+  // Email konta Google powiązanego z AKTYWNYM tokenem Drive. Używane do weryfikacji izolacji przy
+  // cichym auto-connect: akceptujemy token tylko gdy Drive-email == email Dudenest usera (inaczej
+  // w współdzielonej przeglądarce silent GIS mógłby zwrócić cudze konto).
+  Future<String> driveAccountEmail() async {
+    final data = _decode(
+        await _http.get(Uri.parse('$_api/about?fields=user(emailAddress)'),
+            headers: await _authHeaders()),
+        'about');
+    final user = (data['user'] as Map<String, dynamic>?) ?? const {};
+    return (user['emailAddress'] as String?) ?? '';
+  }
+
   @override
   Future<Map<String, dynamic>> getFileMap(String fileId) async {
     // W modelu direct plik żyje w Drive użytkownika — pojedyncza „replika". Zwracamy minimalny
@@ -218,9 +230,12 @@ class DirectEngine implements StorageEngine {
   ImageProvider preview(String fileId) =>
       DriveImageProvider('$fileId#preview1024', () => _thumbBytes(fileId, 1024));
 
+  // Do WYŚWIETLANIA używamy renditionu lh3 (Drive transkoduje KAŻDY format obrazu → JPEG server-side),
+  // NIE surowych bajtów — dzięki temu formaty, których Flutter web/CanvasKit nie dekoduje (avif, heic),
+  // renderują się poprawnie. Surowe bajty (`downloadFile`) zostają wyłącznie do pobrania pliku na dysk.
   @override
   ImageProvider original(String fileId) =>
-      DriveImageProvider('$fileId#original', () => downloadFile(fileId));
+      DriveImageProvider('$fileId#disp2048', () => _thumbBytes(fileId, 2048));
 
   Future<Uint8List> _thumbBytes(String fileId, int size) async {
     try {

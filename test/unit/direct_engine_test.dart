@@ -72,6 +72,21 @@ void main() {
     expect(res['file_id'], 'u1');
   });
 
+  test('driveAccountEmail: /about(user.emailAddress) + Bearer', () async {
+    String? seenUrl;
+    String? seenAuth;
+    final client = MockClient((req) async {
+      seenUrl = req.url.toString();
+      seenAuth = req.headers['Authorization'];
+      return http.Response(jsonEncode({'user': {'emailAddress': 'me@gmail.com'}}), 200,
+          headers: {'content-type': 'application/json'});
+    });
+    final email = await engineReturning(client).driveAccountEmail();
+    expect(email, 'me@gmail.com');
+    expect(seenUrl, contains('/about'));
+    expect(seenAuth, 'Bearer TESTTOKEN');
+  });
+
   test('listFiles: paginacja po nextPageToken', () async {
     var call = 0;
     final client = MockClient((req) async {
