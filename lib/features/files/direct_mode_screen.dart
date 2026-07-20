@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import '../../core/auth/auth_service.dart';
 import '../../core/oauth/google_drive_auth.dart';
 import '../../core/storage/direct_engine.dart';
 import '../../core/storage/storage_engine.dart';
 import 'gallery_screen.dart';
 import 'gallery_settings.dart';
+import 'native_media.dart';
+import 'video_player_widget.dart';
 
 /// Tryb „Dudenest bez relay" wpięty w główną galerię za flagą `EngineMode.direct` (E3c).
 ///
@@ -23,7 +26,7 @@ class DirectModeScreen extends StatefulWidget {
 
 // Lokalne helpery rodzaju pliku (RelayScreen/media_viewer mają własne kopie — świadoma, drobna
 // duplikacja, by NIE dotykać ścieżki relay; ewentualny wspólny util = osobny dług).
-const _imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif'};
+const _imageExts = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'heic', 'heif'};
 const _videoExts = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp', 'wmv', 'flv'};
 bool _isImage(String n) => _imageExts.contains(n.split('.').last.toLowerCase());
 bool _isVideo(String n) => _videoExts.contains(n.split('.').last.toLowerCase());
@@ -38,25 +41,50 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   List<Map<String, dynamic>>? _files;
   String? _error;
   bool _loading = false;
+  final Set<String> _selected = {}; // multi-select do usuwania (parytet z relay path)
+  bool get _selectionMode => _selected.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    // Po reloadzie strony: jeśli token drive.file przetrwał (SharedPreferences), połącz od razu —
-    // bez connect-gate i bez popupu GIS. Tylko realna ścieżka GIS (engineBuilder==null); w testach nie.
-    if (widget.engineBuilder == null) {
-      hasValidDriveToken().then((ok) {
-        if (ok && mounted && _files == null && !_loading) _connect();
-      });
+    // Auto-połączenie po wejściu → /photos ładuje się OD RAZU (parytet z relayem), bez klikania Connect.
+    // Tylko realna ścieżka GIS (engineBuilder==null; w testach pomijane).
+    if (widget.engineBuilder == null) _autoConnect();
+  }
+
+  // Połącz bez klikania Connect:
+  //  1) mamy już ważny NASZ token (przetrwał reload) → połącz;
+  //  2) login Google → cichy token (prompt:'', BEZ popupu/gestu) z hint=email usera, POTEM weryfikacja
+  //     że konto Drive == konto Dudenest (ochrona: w współdzielonej przeglądarce silent GIS mógłby dać
+  //     cudze konto). Mismatch/fail → brama Connect. Login GitHub/Apple/demo → brama (brak konta Google).
+  Future<void> _autoConnect() async {
+    if (await hasValidDriveToken()) {
+      if (mounted && _files == null && !_loading) _connect();
+      return;
+    }
+    final u = AuthService().user;
+    if (u == null || u.provider != 'google' || u.email.isEmpty) return; // → brama Connect
+    try {
+      await getDriveAccessToken(silent: true, hint: u.email); // bez popupu; rzuca gdy brak cichej zgody
+      final driveEmail =
+          await DirectEngine(accessToken: getDriveAccessToken).driveAccountEmail();
+      if (driveEmail.toLowerCase() != u.email.toLowerCase()) {
+        await clearDriveToken(); // cudze/nieznane konto Google → NIE używaj
+        return; // → brama Connect
+      }
+      if (mounted && _files == null && !_loading) _connect();
+    } catch (_) {
+      // brak cichej zgody (sesja/cookies/pierwsza zgoda) lub weryfikacja → brama Connect
     }
   }
 
-  // Photos = tylko media (backend `folder` lub rozszerzenie); Files = wszystko (parytet z RelayScreen).
+  // Photos = tylko renderowalne media (po ROZSZERZENIU, jak RelayScreen — deterministyczne, niezależne
+  // od tego jaki mime Drive nadał uploadowi); Files = wszystko. Rozszerzenia nierenderowalne w Flutter
+  // web (avif/heic/svg) świadomie POZA _imageExts → nie pokazujemy pustych kafelków w Photos.
   bool _matchesFolder(Map<String, dynamic> f) {
     if (widget.folder == 'files') return true;
-    final backend = f['folder'] as String?;
     final ext = (f['name'] as String? ?? '').split('.').last.toLowerCase();
-    return backend == 'photos' || _imageExts.contains(ext) || _videoExts.contains(ext);
+    return _imageExts.contains(ext) || _videoExts.contains(ext);
   }
 
   Future<void> _connect() async {
@@ -77,7 +105,7 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   Future<void> _reload() async {
     final engine = _engine;
     if (engine == null) return _connect();
-    setState(() { _loading = true; _error = null; });
+    setState(() { _loading = true; _error = null; _selected.clear(); });
     try {
       final files = (await engine.listFiles()).where(_matchesFolder).toList(growable: false);
       if (!mounted) return;
@@ -105,7 +133,7 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
       await _reload();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Wgrano ${jobs.length} plik(ów) do Google Drive.')));
+            SnackBar(content: Text('Uploaded ${jobs.length} file(s) to Google Drive.')));
       }
     } catch (e) {
       if (!mounted) return;
@@ -113,28 +141,96 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     }
   }
 
-  // MVP: tap na obrazie → pełny podgląd przez StorageEngine.original. Wideo/pliki nie-obrazowe odroczone.
-  void _openImage(String id, String name) {
+  void _toggleSelect(String id) => setState(() {
+        if (!_selected.remove(id)) _selected.add(id);
+      });
+
+  // Usuń zaznaczone WPROST z Google Drive (DirectEngine.deleteFile → Drive REST) → re-list.
+  // Parytet z relay path (_deleteSelected w relay_screen). Confirm dialog bo operacja destrukcyjna.
+  Future<void> _deleteSelected() async {
+    final count = _selected.length;
+    if (count == 0) return;
     final engine = _engine;
-    if (engine == null || !_isImage(name)) {
+    if (engine == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete files'),
+        content: Text('Delete $count file(s) from Google Drive?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final ids = Set<String>.from(_selected);
+    setState(() { _loading = true; _error = null; _selected.clear(); });
+    int failed = 0;
+    for (final id in ids) {
+      try {
+        await engine.deleteFile(id);
+      } catch (_) {
+        failed++;
+      }
+    }
+    await _reload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(failed == 0
+          ? 'Deleted $count file(s).'
+          : '$failed of $count deletions failed.'),
+      backgroundColor: failed == 0 ? Colors.green : Colors.red,
+    ));
+  }
+
+  // Tap → pełny podgląd przez NATYWNY element przeglądarki (blob URL): obraz KAŻDEGO formatu (avif/heic
+  // też — CanvasKit ich nie dekoduje, przeglądarka tak) oraz wideo. Bajty tokenem (downloadFile).
+  void _openMedia(String id, String name) {
+    final engine = _engine;
+    if (engine == null) return;
+    final isVid = _isVideo(name);
+    if (!_isImage(name) && !isVid) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Podgląd wideo i plików nie-obrazowych: wkrótce (tryb direct MVP).')));
+          content: Text('Preview for this file type is not supported yet.')));
       return;
     }
+    final f = _files?.firstWhere((e) => e['file_id'] == id, orElse: () => const <String, dynamic>{});
+    final mime = (f?['mime'] as String?)?.isNotEmpty == true
+        ? f!['mime'] as String
+        : (isVid ? 'video/mp4' : 'application/octet-stream');
     Navigator.push(context, MaterialPageRoute(
-        builder: (_) => _DirectImageViewer(image: engine.original(id), title: name)));
+        builder: (_) => _DirectMediaViewer(
+            engine: engine, fileId: id, title: name, mime: mime, isVideo: isVid)));
   }
 
   @override
   Widget build(BuildContext context) {
     final title = widget.folder == 'files' ? 'Files (direct)' : 'Photos (direct)';
+    final selecting = _selectionMode;
     return Scaffold(
-      appBar: AppBar(title: Text(title), actions: [
-        if (_files != null)
-          IconButton(icon: const Icon(Icons.refresh), tooltip: 'Odśwież', onPressed: _loading ? null : _reload),
-      ]),
+      appBar: selecting
+          ? AppBar(
+              leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Clear selection',
+                  onPressed: () => setState(() => _selected.clear())),
+              title: Text('${_selected.length} selected'),
+              actions: [
+                IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    tooltip: 'Delete',
+                    onPressed: _loading ? null : _deleteSelected),
+              ])
+          : AppBar(title: Text(title), actions: [
+              if (_files != null)
+                IconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh', onPressed: _loading ? null : _reload),
+            ]),
       body: _body(),
-      floatingActionButton: _files != null
+      floatingActionButton: (_files != null && !selecting)
           ? FloatingActionButton.extended(
               onPressed: _loading ? null : _upload,
               icon: const Icon(Icons.upload),
@@ -149,16 +245,16 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     final files = _files;
     if (files == null) return _connectGate();
     if (files.isEmpty) {
-      return const Center(child: Text('Brak plików utworzonych przez tę aplikację (drive.file).'));
+      return const Center(child: Text('No files created by this app (drive.file).'));
     }
     return GalleryScreen(
       files: files,
       relay: _engine!,
       settings: GallerySettings(),
-      selected: const <String>{},
-      selectionMode: false,
-      onOpen: _openImage,
-      onToggleSelect: (_) {},
+      selected: _selected,
+      selectionMode: _selectionMode,
+      onOpen: _openMedia,
+      onToggleSelect: _toggleSelect,
       isImage: _isImage,
       isVideo: _isVideo,
       fileIcon: _fileIcon,
@@ -179,32 +275,81 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.cloud_off, color: Colors.orangeAccent, size: 40),
             const SizedBox(height: 12),
-            Text('Połączenie z Google Drive nie powiodło się.\n$_error', textAlign: TextAlign.center),
+            Text('Could not connect to Google Drive.\n$_error', textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _connect, child: const Text('Połącz ponownie')),
+            ElevatedButton(onPressed: _connect, child: const Text('Reconnect')),
           ]),
         ),
       );
 }
 
-// Minimalny pełnoekranowy podgląd obrazu (bez relaya) — bajty z Drive przez StorageEngine.original.
-class _DirectImageViewer extends StatelessWidget {
-  final ImageProvider image;
+// Pełnoekranowy podgląd bez relaya przez NATYWNY element przeglądarki. Pobiera bajty tokenem
+// (downloadFile) → blob URL → <img> (każdy format, w tym avif/heic) lub <video>. Blob zwalniany w dispose.
+class _DirectMediaViewer extends StatefulWidget {
+  final StorageEngine engine;
+  final String fileId;
   final String title;
-  const _DirectImageViewer({required this.image, required this.title});
+  final String mime;
+  final bool isVideo;
+  const _DirectMediaViewer(
+      {required this.engine,
+      required this.fileId,
+      required this.title,
+      required this.mime,
+      required this.isVideo});
+  @override
+  State<_DirectMediaViewer> createState() => _DirectMediaViewerState();
+}
+
+class _DirectMediaViewerState extends State<_DirectMediaViewer> {
+  String? _url;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final bytes = await widget.engine.downloadFile(widget.fileId); // surowe bajty, tokenem
+      final url = makeObjectUrl(bytes, widget.mime);
+      if (!mounted) {
+        revokeObjectUrl(url);
+        return;
+      }
+      setState(() => _url = url);
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    }
+  }
+
+  @override
+  void dispose() {
+    final u = _url;
+    if (u != null) revokeObjectUrl(u); // zwolnij pamięć bloba
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.black,
-        appBar: AppBar(title: Text(title), backgroundColor: Colors.black),
-        body: Center(
-          child: InteractiveViewer(
-            child: Image(
-              image: image,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.broken_image, color: Colors.white24, size: 64),
-            ),
-          ),
-        ),
+        appBar: AppBar(title: Text(widget.title), backgroundColor: Colors.black),
+        body: Center(child: _body()),
       );
+
+  Widget _body() {
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text('Could not load media.\n$_error',
+            style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
+      );
+    }
+    final url = _url;
+    if (url == null) return const CircularProgressIndicator();
+    if (widget.isVideo) return VideoPlayerWidget(videoUrl: url, headers: const {});
+    return NativeImageView(objectUrl: url);
+  }
 }

@@ -70,6 +70,18 @@ class DirectEngine implements StorageEngine {
     };
   }
 
+  // Zgadnij mime z rozszerzenia (Drive nadaje octet-stream, gdy nie podamy). Fallback bezpieczny.
+  static const _mimeByExt = {
+    'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+    'webp': 'image/webp', 'avif': 'image/avif', 'bmp': 'image/bmp', 'heic': 'image/heic',
+    'heif': 'image/heif', 'svg': 'image/svg+xml',
+    'mp4': 'video/mp4', 'mov': 'video/quicktime', 'avi': 'video/x-msvideo', 'mkv': 'video/x-matroska',
+    'webm': 'video/webm', 'm4v': 'video/x-m4v', '3gp': 'video/3gpp',
+    'pdf': 'application/pdf', 'txt': 'text/plain', 'zip': 'application/zip', 'json': 'application/json',
+  };
+  static String _mimeFor(String name) =>
+      _mimeByExt[name.split('.').last.toLowerCase()] ?? 'application/octet-stream';
+
   @override
   Future<List<Map<String, dynamic>>> listFiles() async {
     final headers = await _authHeaders();
@@ -103,14 +115,16 @@ class DirectEngine implements StorageEngine {
   @override
   Future<Map<String, dynamic>> uploadFile(String filename, Uint8List bytes,
       {String strategy = 'Replica'}) async {
-    // Drive multipart upload (metadata + media w jednym żądaniu).
+    // Drive multipart upload (metadata + media w jednym żądaniu). mimeType z rozszerzenia — bez tego
+    // Drive zapisuje octet-stream → zła klasyfikacja media/plik i brak miniatur.
+    final mime = _mimeFor(filename);
     final boundary = 'dudenest${DateTime.now().microsecondsSinceEpoch}';
-    final meta = jsonEncode({'name': filename});
+    final meta = jsonEncode({'name': filename, 'mimeType': mime});
     final body = <int>[];
     void add(String s) => body.addAll(utf8.encode(s));
     add('--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n');
     add('$meta\r\n');
-    add('--$boundary\r\nContent-Type: application/octet-stream\r\n\r\n');
+    add('--$boundary\r\nContent-Type: $mime\r\n\r\n');
     body.addAll(bytes);
     add('\r\n--$boundary--');
     final resp = await _http.post(
@@ -144,6 +158,18 @@ class DirectEngine implements StorageEngine {
       throw StorageException('files.delete $fileId: HTTP ${resp.statusCode}',
           statusCode: resp.statusCode, body: resp.body);
     }
+  }
+
+  // Email konta Google powiązanego z AKTYWNYM tokenem. `userinfo` (scope `email`) — NIE Drive `/about`,
+  // bo `about.get` pod samym `drive.file` nie zwraca emaila. Do weryfikacji izolacji przy cichym
+  // auto-connect: akceptujemy token tylko gdy to konto == email Dudenest usera (inaczej w współdzielonej
+  // przeglądarce silent GIS mógłby zwrócić cudze konto).
+  Future<String> driveAccountEmail() async {
+    final data = _decode(
+        await _http.get(Uri.parse('https://www.googleapis.com/oauth2/v3/userinfo'),
+            headers: await _authHeaders()),
+        'userinfo');
+    return (data['email'] as String?) ?? '';
   }
 
   @override
@@ -204,9 +230,12 @@ class DirectEngine implements StorageEngine {
   ImageProvider preview(String fileId) =>
       DriveImageProvider('$fileId#preview1024', () => _thumbBytes(fileId, 1024));
 
+  // Do WYŚWIETLANIA używamy renditionu lh3 (Drive transkoduje KAŻDY format obrazu → JPEG server-side),
+  // NIE surowych bajtów — dzięki temu formaty, których Flutter web/CanvasKit nie dekoduje (avif, heic),
+  // renderują się poprawnie. Surowe bajty (`downloadFile`) zostają wyłącznie do pobrania pliku na dysk.
   @override
   ImageProvider original(String fileId) =>
-      DriveImageProvider('$fileId#original', () => downloadFile(fileId));
+      DriveImageProvider('$fileId#disp2048', () => _thumbBytes(fileId, 2048));
 
   Future<Uint8List> _thumbBytes(String fileId, int size) async {
     try {
@@ -227,7 +256,7 @@ class DirectEngine implements StorageEngine {
         if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) return resp.bodyBytes;
       }
     } catch (_) {
-      // każdy błąd (metadata/lh3/CORS) → fallback niżej
+      // metadata/lh3/CORS → fallback niżej
     }
     // Fallback na oryginał (alt=media, sprawdzony): gdy brak thumbnailLink (świeży upload) LUB lh3
     // zawiodło (CORS/403/pusty). Gwarantuje render miniatury zamiast broken_image; cover-fit skaluje.

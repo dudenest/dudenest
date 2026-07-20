@@ -10,3 +10,8 @@ const googleWebClientId =
 /// Scope `drive.file` (decyzja B): tylko pliki utworzone/otwarte przez tę aplikację. Non-sensitive →
 /// zero CASA, zero limitu 100 userów.
 const driveFileScope = 'https://www.googleapis.com/auth/drive.file';
+
+/// Scope'y żądane przy GIS: `drive.file` + `openid email`. `email` pozwala pobrać z `userinfo` adres
+/// konta Google powiązanego z tokenem → weryfikacja przy cichym auto-connect, że to konto == konto
+/// Dudenest (izolacja). `openid email` = non-sensitive (bez CASA), ale zmienia ekran zgody.
+const googleGisScopes = '$driveFileScope openid email';

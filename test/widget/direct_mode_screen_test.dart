@@ -16,6 +16,7 @@ class _FakeEngine extends StorageEngine {
   final List<Map<String, dynamic>> _files;
   final Object? throwOnList;
   final List<String> uploaded = [];
+  final List<String> deleted = [];
   _FakeEngine({List<Map<String, dynamic>>? files, this.throwOnList}) : _files = [...?files];
   @override
   Future<List<Map<String, dynamic>>> listFiles() async {
@@ -41,7 +42,10 @@ class _FakeEngine extends StorageEngine {
   @override
   Future<Uint8List> downloadFile(String fileId) async => Uint8List(0);
   @override
-  Future<void> deleteFile(String fileId) async {}
+  Future<void> deleteFile(String fileId) async {
+    deleted.add(fileId);
+    _files.removeWhere((f) => f['file_id'] == fileId);
+  }
   @override
   Future<Map<String, dynamic>> getFileMap(String fileId) async => {};
   @override
@@ -74,16 +78,16 @@ void main() {
     await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => _FakeEngine(files: []))));
     await t.tap(find.text('Connect Google Drive'));
     await t.pumpAndSettle();
-    expect(find.textContaining('Brak plików utworzonych'), findsOneWidget);
+    expect(find.textContaining('No files created'), findsOneWidget);
     expect(find.byType(GalleryScreen), findsNothing);
   });
 
-  testWidgets('connect → wyjątek (np. 401) → stan błędu + Połącz ponownie', (t) async {
+  testWidgets('connect → wyjątek (np. 401) → stan błędu + Reconnect', (t) async {
     await t.pumpWidget(_wrap(DirectModeScreen(
         folder: 'photos', engineBuilder: () => _FakeEngine(throwOnList: StorageException('401', statusCode: 401)))));
     await t.tap(find.text('Connect Google Drive'));
     await t.pumpAndSettle();
-    expect(find.text('Połącz ponownie'), findsOneWidget);
+    expect(find.text('Reconnect'), findsOneWidget);
     expect(find.byType(GalleryScreen), findsNothing);
   });
 
@@ -92,6 +96,33 @@ void main() {
     await t.tap(find.text('Connect Google Drive'));
     await t.pumpAndSettle();
     expect(t.widget<GalleryScreen>(find.byType(GalleryScreen)).files.length, 1); // tylko a.jpg
+  });
+
+  testWidgets('photos: nie-obraz z backend folder=photos (pdf) NIE w Photos (filtr po rozszerzeniu)', (t) async {
+    // Regresja (d): Drive potrafi zaklasyfikować upload jako photos; filtr MUSI iść po rozszerzeniu.
+    final misclassified = {'file_id': 'm1', 'name': 'doc.pdf', 'folder': 'photos'};
+    await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => _FakeEngine(files: [misclassified]))));
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('No files'), findsOneWidget); // odfiltrowany mimo backend=photos
+    expect(find.byType(GalleryScreen), findsNothing);
+  });
+
+  testWidgets('ValueKey per folder → osobny State (Photos≠Files, nie reużywa stanu)', (t) async {
+    // Regresja (3): bez klucza Flutter reużywa State między zakładkami → obie pokazują to samo.
+    // Z ValueKey('direct-<folder>') przełączenie tworzy NOWY State (wraca connect-gate) i filtruje poprawnie.
+    Widget screen(String folder) => DirectModeScreen(
+        key: ValueKey('direct-$folder'), folder: folder,
+        engineBuilder: () => _FakeEngine(files: [photo, doc]));
+    await t.pumpWidget(_wrap(screen('photos')));
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    expect(t.widget<GalleryScreen>(find.byType(GalleryScreen)).files.length, 1); // photos: tylko jpg
+    await t.pumpWidget(_wrap(screen('files'))); // przełącz zakładkę (ten sam typ, INNY klucz)
+    expect(find.text('Connect Google Drive'), findsOneWidget); // NOWY State → znów gate (dowód nie-reużycia)
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    expect(t.widget<GalleryScreen>(find.byType(GalleryScreen)).files.length, 2); // files: wszystko
   });
 
   testWidgets('folder=files → wszystko (filtr)', (t) async {
@@ -109,7 +140,7 @@ void main() {
         folder: 'photos', engineBuilder: () => engine, filePicker: () async => picked)));
     await t.tap(find.text('Connect Google Drive'));
     await t.pumpAndSettle();
-    expect(find.textContaining('Brak plików'), findsOneWidget); // start: pusto
+    expect(find.textContaining('No files'), findsOneWidget); // start: pusto
     expect(find.text('Upload'), findsOneWidget); // FAB widoczny po połączeniu
     await t.tap(find.text('Upload'));
     await t.pumpAndSettle();
@@ -120,5 +151,46 @@ void main() {
   testWidgets('connect-gate bez FAB (upload dopiero po połączeniu)', (t) async {
     await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => _FakeEngine(files: []))));
     expect(find.text('Upload'), findsNothing);
+  });
+
+  testWidgets('long-press → tryb selekcji (AppBar count + delete, FAB znika)', (t) async {
+    await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => _FakeEngine(files: [photo]))));
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    await t.longPress(find.byType(Image).first); // wejście w selekcję
+    await t.pumpAndSettle();
+    expect(find.text('1 selected'), findsOneWidget);
+    expect(find.byIcon(Icons.delete), findsOneWidget);
+    expect(find.text('Upload'), findsNothing); // FAB ukryty w selekcji
+  });
+
+  testWidgets('select + delete → engine.deleteFile + re-list bez pliku', (t) async {
+    final engine = _FakeEngine(files: [photo]);
+    await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => engine)));
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    await t.longPress(find.byType(Image).first);
+    await t.pumpAndSettle();
+    await t.tap(find.byIcon(Icons.delete)); // otwiera confirm dialog
+    await t.pumpAndSettle();
+    await t.tap(find.text('Delete')); // potwierdź
+    await t.pumpAndSettle();
+    expect(engine.deleted, ['p1']); // deleteFile wywołany dla zaznaczonego id
+    expect(find.textContaining('No files'), findsOneWidget); // re-list → pusto
+  });
+
+  testWidgets('delete anulowany → engine.deleteFile NIE wywołany', (t) async {
+    final engine = _FakeEngine(files: [photo]);
+    await t.pumpWidget(_wrap(DirectModeScreen(folder: 'photos', engineBuilder: () => engine)));
+    await t.tap(find.text('Connect Google Drive'));
+    await t.pumpAndSettle();
+    await t.longPress(find.byType(Image).first);
+    await t.pumpAndSettle();
+    await t.tap(find.byIcon(Icons.delete));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Cancel')); // rezygnacja
+    await t.pumpAndSettle();
+    expect(engine.deleted, isEmpty);
+    expect(find.byType(GalleryScreen), findsOneWidget); // plik nadal jest
   });
 }

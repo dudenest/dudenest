@@ -18,6 +18,7 @@ import 'features/relay/relay_management_screen.dart';
 import 'features/files/gallery_settings.dart';
 import 'features/files/direct_mode_screen.dart';
 import 'core/storage/engine_config.dart';
+import 'core/storage/direct_engine.dart';
 import 'core/oauth/google_drive_auth.dart';
 
 // Direct mode (E3): izolacja kont ZWERYFIKOWANA 2026-07-19 w 2 izolowanych profilach (Dudenest email ==
@@ -213,18 +214,33 @@ class _HomeScreenState extends State<HomeScreen> {
     final direct = kDirectModeEnabled && _engineMode == EngineMode.direct;
     final screens = [
       direct
-          ? const DirectModeScreen(folder: 'photos')
+          // ValueKey per folder: bez tego Flutter reużywa TEN SAM State między zakładkami Photos↔Files
+          // (ta sama pozycja+typ w drzewie) → `_files` nie przefiltrowuje się przy zmianie folder →
+          // obie zakładki pokazują to samo. Odrębny klucz = odrębny State = poprawny filtr per folder.
+          ? const DirectModeScreen(key: ValueKey('direct-photos'), folder: 'photos')
           : hasRelay
               ? RelayScreen(relay: _relay, folder: 'photos')
               : _PlaceholderPhotosScreen(onUpload: _openUpload),
       direct
-          ? const DirectModeScreen(folder: 'files')
+          ? const DirectModeScreen(key: ValueKey('direct-files'), folder: 'files')
           : hasRelay
               ? RelayScreen(relay: _relay, folder: 'files')
               : _RelayRequiredPlaceholder(
                   message: _relayError ?? 'No relay assigned to this account'),
-      UploadScreen(
-          relay: hasRelay ? _relay : null, autoPickNonce: _uploadNonce),
+      direct
+          ? UploadScreen(
+              // Direct: bez gotowego silnika — brama connect buduje DirectEngine po user-gesture.
+              // Token NIE trzymany w HomeScreen (to był kształt wycieku cross-account) — DirectEngine
+              // dostaje tylko funkcję getDriveAccessToken (wiązanie per-uid żyje w niej).
+              engine: null,
+              onConnect: () async {
+                await getDriveAccessToken(); // user-gesture → popup GIS; primuje token per-uid
+                return DirectEngine(accessToken: getDriveAccessToken);
+              },
+              hasValidToken: hasValidDriveToken, // cichy auto-connect po powrocie na tab
+              autoPickNonce: _uploadNonce)
+          : UploadScreen(
+              engine: hasRelay ? _relay : null, autoPickNonce: _uploadNonce),
       SettingsScreen(
           relay: hasRelay ? _relay : null,
           relayUrl: _relayUrl,
@@ -264,6 +280,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // sam DirectModeScreen (connect-gate) — EngineFactory rzuca, gdy direct bez tokenu, więc toggle
   // nie może „po cichu" wejść w direct bez OAuth.
   Future<void> _setEngineMode(EngineMode m) async {
+    // Tylko persystuj tryb + odśwież UI. Połączenie z Drive robi ekran Photos/Files (cichy auto-connect
+    // gdy user już wyraził zgodę; inaczej brama Connect = pierwsza, jednorazowa zgoda Google).
     await EngineConfig.save(m);
     if (mounted) setState(() => _engineMode = m);
   }
@@ -448,14 +466,14 @@ class SettingsScreen extends StatelessWidget {
         if (kDirectModeEnabled) ...[
           const Divider(),
           const ListTile(
-              title: Text('Storage engine (eksperymentalne)',
+              title: Text('Storage engine (experimental)',
                   style: TextStyle(fontWeight: FontWeight.bold))),
           SwitchListTile(
             secondary: const Icon(Icons.cloud_sync),
-            title: const Text('Tryb direct (Google Drive bez relaya)'),
+            title: const Text('Direct mode (Google Drive without relay)'),
             subtitle: const Text(
-                'Photos/Files czytają pliki wprost z Twojego Google Drive (drive.file). '
-                'Beta — logowanie Google przy wejściu. Wyłączone = relay (domyślny).',
+                'Photos/Files read files straight from your Google Drive (drive.file). '
+                'Beta — Google sign-in on entry. Off = relay (default).',
                 style: TextStyle(fontSize: 12)),
             value: engineMode == EngineMode.direct,
             onChanged: (v) =>
