@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'browser_image_decode.dart';
 
 /// ImageProvider, który ładuje bajty obrazu z asynchronicznego loadera.
 ///
@@ -28,21 +28,20 @@ class DriveImageProvider extends ImageProvider<DriveImageProvider> {
   @override
   ImageStreamCompleter loadImage(
       DriveImageProvider key, ImageDecoderCallback decode) {
-    return MultiFrameImageStreamCompleter(
-      codec: _load(key, decode),
-      scale: key.scale,
-      debugLabel: 'DriveImageProvider($cacheKey)',
+    // OneFrame + dekoder PRZEGLĄDARKI (nie CanvasKit `decode`), bo tylko przeglądarka dekoduje avif/heic.
+    return OneFrameImageStreamCompleter(
+      _load(key),
+      informationCollector: () => [DiagnosticsProperty('cacheKey', cacheKey)],
     );
   }
 
-  Future<ui.Codec> _load(
-      DriveImageProvider key, ImageDecoderCallback decode) async {
+  Future<ImageInfo> _load(DriveImageProvider key) async {
     final bytes = await key.loader();
     if (bytes.isEmpty) {
       throw StateError('DriveImageProvider($cacheKey): empty image bytes');
     }
-    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    return decode(buffer);
+    final image = await decodeImageBytes(bytes); // browser-decode → obsługuje avif/heic
+    return ImageInfo(image: image, scale: key.scale);
   }
 
   @override
