@@ -1,146 +1,76 @@
-// ignore_for_file: non_constant_identifier_names — access_token/client_id/scope MUSZĄ mieć
-// nazwy snake_case, bo mapują 1:1 na właściwości JS API Google Identity Services.
 import 'dart:async';
-import 'dart:js_interop';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/auth_service.dart';
-import 'google_config.dart';
+import '../auth/web_utils.dart';
 
-// Pozyskanie access tokenu Google Drive (scope drive.file) w przeglądarce przez
-// Google Identity Services (GIS) token model. Wymaga skryptu GIS w web/index.html
-// (`https://accounts.google.com/gsi/client`).
-//
-// GIS token model daje access token (~1h, BEZ refresh tokena — ograniczenie klienta
-// publicznego w przeglądarce, świadomie zaakceptowane w E0). Odnowienie = ponowne
-// requestAccessToken (może wymagać ponownej zgody usera).
+// Direct-mode Google Drive auth — BACKEND-ASSISTED (nie GIS). Zgoda robiona przez REDIRECT do
+// api.dudenest.com (jak login Dudenest), backend trzyma refresh token i mintuje access tokeny.
+// Zysk vs GIS: ZERO popupu (redirect zamiast popupu, którego przeglądarka nie blokuje) i /photos
+// ładuje się od razu na KAŻDYM loginie (backend odnawia token po stronie serwera — parytet z relay).
+// Bajty plików nadal Flutter→Drive wprost; backendowe jest tylko pozyskanie tokenu.
 
-extension type _GisTokenResponse(JSObject _) implements JSObject {
-  external String? get access_token;
-  external String? get error;
-  external num? get expires_in; // TTL tokenu w sekundach (~3600); num bo JS może dać double
-}
+const _apiBase = 'https://api.dudenest.com';
 
-// Override do requestAccessToken — `prompt: 'select_account'` WYMUSZA picker kont Google przy każdym
-// realnym połączeniu, żeby user świadomie wybrał konto (bez cichego użycia domyślnego konta przeglądarki
-// — to była luka: zalogowany do Dudenest jako A, przeglądarka aktywna na Google B → cichy Drive B).
-extension type _GisOverride._(JSObject _) implements JSObject {
-  external factory _GisOverride({String prompt, String hint});
-}
-
-extension type _GisTokenClient(JSObject _) implements JSObject {
-  external void requestAccessToken([_GisOverride overrideConfig]);
-}
-
-extension type _GisTokenClientConfig._(JSObject _) implements JSObject {
-  external factory _GisTokenClientConfig({
-    required String client_id,
-    required String scope,
-    required JSFunction callback,
-  });
-}
-
-@JS('google.accounts.oauth2.initTokenClient')
-external _GisTokenClient _initTokenClient(_GisTokenClientConfig config);
-
-// Cache tokenu. KRYTYCZNE: `requestAccessToken()` otwiera popup GIS, który przeglądarka blokuje POZA
-// user-gesture. DirectEngine woła getDriveAccessToken per-żądanie (miniatury, upload po file-pickerze)
-// — bez cache każde takie żądanie próbowałoby otworzyć popup i wisiałoby/padało. Popup pojawia się więc
-// tylko przy pierwszym połączeniu (przycisk Connect = gest) i po wygaśnięciu.
-//
-// 🔒 IZOLACJA MIĘDZY KONTAMI: token jest ZWIĄZANY z id użytkownika Dudenest (`_uid`). Persystujemy go w
-// SharedPreferences RAZEM z uid; przy odczycie używamy TYLKO gdy `storedUid == bieżący uid`. Bez tego
-// po przełączeniu konta Dudenest następny użytkownik dziedziczyłby token Drive poprzedniego (realny
-// wyciek — zgłoszony 2026-07-18). `clearDriveToken()` (wołane przy wylogowaniu) kasuje pamięć+dysk.
-// DEMO (sesja WSPÓŁDZIELONA) → NIE persystujemy (tylko pamięć per-karta), bo demo-uid jest wspólny.
+// Cache access tokenu per uid (Dudenest). Backend zwraca ~1h token; cache'ujemy z marginesem.
 String? _cachedToken;
 DateTime? _cachedExpiry;
 String? _cachedUid;
-const _kTok = 'drive_access_token';
-const _kExp = 'drive_access_token_exp_ms';
-const _kUid = 'drive_access_token_uid';
 
 String? _uid() => AuthService().user?.id;
-bool _persistable() => !AuthService().isDemo; // demo = współdzielone → nigdy na dysk
+bool _valid() =>
+    _cachedToken != null && _cachedExpiry != null &&
+    DateTime.now().isBefore(_cachedExpiry!.subtract(const Duration(seconds: 60)));
 
-bool _valid(String? t, DateTime? e) =>
-    t != null && e != null && DateTime.now().isBefore(e.subtract(const Duration(seconds: 60)));
-bool _memHit(String? uid) => uid != null && _cachedUid == uid && _valid(_cachedToken, _cachedExpiry);
+Future<String> _dudenestJwt() async =>
+    (await SharedPreferences.getInstance()).getString('auth_token') ?? '';
 
-/// Kasuje token Drive (pamięć + SharedPreferences). Wołane przy wylogowaniu z Dudenest — inaczej
-/// następny użytkownik odziedziczyłby dostęp do Drive poprzedniego (wyciek między kontami).
+/// Ważny token dla BIEŻĄCEGO usera w cache? (bez sieci). Pełną prawdę daje [getDriveAccessToken].
+Future<bool> hasValidDriveToken() async {
+  final uid = _uid();
+  return uid != null && _cachedUid == uid && _valid();
+}
+
+/// Access token drive.file dla bieżącego usera. Cache → backend GET (ciche, bez popupu).
+/// [silent]/[hint] zachowane dla zgodności sygnatury (backend jest z natury cichy). Rzuca
+/// `not_connected` gdy backend nie ma refresh tokena (→ ekran pokazuje „Connect" = redirect).
+Future<String> getDriveAccessToken({bool silent = false, String? hint}) async {
+  final uid = _uid();
+  if (uid != null && _cachedUid == uid && _valid()) return _cachedToken!;
+  final jwt = await _dudenestJwt();
+  final resp = await http.get(
+    Uri.parse('$_apiBase/api/v1/direct/google/token'),
+    headers: {'Authorization': 'Bearer $jwt'},
+  );
+  if (resp.statusCode == 404) {
+    throw StateError('not_connected'); // brak refresh tokena → brama Connect (redirect)
+  }
+  if (resp.statusCode != 200) {
+    throw StateError('drive token fetch failed: HTTP ${resp.statusCode}');
+  }
+  final data = jsonDecode(resp.body) as Map<String, dynamic>;
+  final tok = data['access_token'] as String?;
+  if (tok == null || tok.isEmpty) throw StateError('no access_token in response');
+  _cachedToken = tok;
+  _cachedUid = uid;
+  _cachedExpiry = DateTime.now().add(Duration(seconds: (data['expires_in'] as num?)?.toInt() ?? 3000));
+  return tok;
+}
+
+/// Wyczyść cache (token żyje w backendzie; przy Sign out czyścimy tylko lokalny cache — nie kasujemy
+/// refresh tokena, żeby ponowny login tego samego usera łączył od razu; to jest źródło parytetu z relay).
 Future<void> clearDriveToken() async {
   _cachedToken = null;
   _cachedExpiry = null;
   _cachedUid = null;
-  final p = await SharedPreferences.getInstance();
-  await p.remove(_kTok);
-  await p.remove(_kExp);
-  await p.remove(_kUid);
 }
 
-/// Czy istnieje ważny token NALEŻĄCY DO BIEŻĄCEGO użytkownika Dudenest. Pozwala DirectModeScreen
-/// auto-połączyć się po reloadzie BEZ popupu — ale nigdy cudzym tokenem.
-Future<bool> hasValidDriveToken() async {
-  final uid = _uid();
-  if (_memHit(uid)) return true;
-  if (uid == null || !_persistable()) return false;
-  final p = await SharedPreferences.getInstance();
-  final ms = p.getInt(_kExp);
-  return p.getString(_kUid) == uid && ms != null &&
-      _valid(p.getString(_kTok), DateTime.fromMillisecondsSinceEpoch(ms));
-}
-
-/// Zwraca access token `drive.file` dla BIEŻĄCEGO użytkownika Dudenest. Kolejność: pamięć (jego) →
-/// SharedPreferences (jego, przetrwa reload) → popup zgody Google (user-gesture). Rzuca, jeśli GIS
-/// niezaładowane lub user odmówił.
-/// [silent] = próba cichego pozyskania (`prompt:''`, BEZ popupu i BEZ user-gesture) — używane do
-/// auto-połączenia po loginie. Gdy Google nie może przyznać cicho → rzuca (bez UI). [hint] = email
-/// konta Google do wskazania (pinuje konto; i tak weryfikujemy je przez Drive `/about` u wołającego).
-/// Bez [silent] = interaktywnie z `select_account` (wymaga gestu — przycisk Connect / toggle).
-Future<String> getDriveAccessToken({bool silent = false, String? hint}) async {
-  final uid = _uid();
-  if (_memHit(uid)) return _cachedToken!; // brak popupu (upload/miniatury)
-  final prefs = await SharedPreferences.getInstance();
-  if (uid != null && _persistable() && prefs.getString(_kUid) == uid) {
-    final pms = prefs.getInt(_kExp);
-    if (pms != null) {
-      final pt = prefs.getString(_kTok);
-      final pe = DateTime.fromMillisecondsSinceEpoch(pms);
-      if (_valid(pt, pe)) {
-        _cachedToken = pt;
-        _cachedExpiry = pe;
-        _cachedUid = uid;
-        return pt!; // token przetrwał reload (ten sam user) → brak popupu
-      }
-    }
-  }
-  final completer = Completer<String>();
-  void onToken(_GisTokenResponse resp) {
-    final t = resp.access_token;
-    if (t != null && t.isNotEmpty) {
-      _cachedToken = t;
-      _cachedExpiry = DateTime.now().add(Duration(seconds: (resp.expires_in ?? 3600).toInt()));
-      _cachedUid = uid;
-      if (uid != null && _persistable()) {
-        prefs.setString(_kTok, t);
-        prefs.setInt(_kExp, _cachedExpiry!.millisecondsSinceEpoch);
-        prefs.setString(_kUid, uid);
-      }
-      if (!completer.isCompleted) completer.complete(t);
-    } else if (!completer.isCompleted) {
-      completer.completeError(
-          StateError('GIS token error: ${resp.error ?? "brak access_token"}'));
-    }
-  }
-
-  final client = _initTokenClient(_GisTokenClientConfig(
-    client_id: googleWebClientId,
-    scope: googleGisScopes, // drive.file + openid email (email → weryfikacja konta przy cichym connect)
-    callback: onToken.toJS,
-  ));
-  // silent → prompt:'' (bez UI, bez gestu; błąd gdy Google nie przyzna cicho). interaktywnie →
-  // select_account (świadomy wybór konta). hint pinuje konto Google (weryfikacja i tak po stronie wołającego).
-  client.requestAccessToken(
-      _GisOverride(prompt: silent ? '' : 'select_account', hint: hint ?? ''));
-  return completer.future;
+/// Pierwsze podłączenie: pełnostronicowy REDIRECT do backendu (zgoda Google przez redirect, NIE popup).
+/// Po powrocie (`?drive=connected`) apka startuje, [getDriveAccessToken] dostaje token → /photos od razu.
+Future<void> connectDrive() async {
+  final jwt = await _dudenestJwt();
+  final ret = getLocationHref().split('?').first.split('#').first; // np. https://dudenest.com/
+  setLocationHref('$_apiBase/auth/google/drive'
+      '?token=${Uri.encodeComponent(jwt)}&return_url=${Uri.encodeComponent(ret)}');
 }

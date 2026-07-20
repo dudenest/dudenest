@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../core/auth/auth_service.dart';
 import '../../core/oauth/google_drive_auth.dart';
 import '../../core/storage/direct_engine.dart';
 import '../../core/storage/storage_engine.dart';
@@ -52,29 +51,15 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     if (widget.engineBuilder == null) _autoConnect();
   }
 
-  // Połącz bez klikania Connect:
-  //  1) mamy już ważny NASZ token (przetrwał reload) → połącz;
-  //  2) login Google → cichy token (prompt:'', BEZ popupu/gestu) z hint=email usera, POTEM weryfikacja
-  //     że konto Drive == konto Dudenest (ochrona: w współdzielonej przeglądarce silent GIS mógłby dać
-  //     cudze konto). Mismatch/fail → brama Connect. Login GitHub/Apple/demo → brama (brak konta Google).
+  // Połącz bez klikania: token bierzemy z backendu (odnawia refresh po stronie serwera — ciche,
+  // bez popupu). Sukces → połącz od razu (/photos jak relay). 404 not_connected (albo offline) →
+  // NIC nie robimy → pokazuje się brama „Connect" (redirect zgody). Weryfikację konta robi backend.
   Future<void> _autoConnect() async {
-    if (await hasValidDriveToken()) {
-      if (mounted && _files == null && !_loading) _connect();
-      return;
-    }
-    final u = AuthService().user;
-    if (u == null || u.provider != 'google' || u.email.isEmpty) return; // → brama Connect
     try {
-      await getDriveAccessToken(silent: true, hint: u.email); // bez popupu; rzuca gdy brak cichej zgody
-      final driveEmail =
-          await DirectEngine(accessToken: getDriveAccessToken).driveAccountEmail();
-      if (driveEmail.toLowerCase() != u.email.toLowerCase()) {
-        await clearDriveToken(); // cudze/nieznane konto Google → NIE używaj
-        return; // → brama Connect
-      }
+      await getDriveAccessToken(); // backend GET; rzuca gdy brak refresh tokena
       if (mounted && _files == null && !_loading) _connect();
     } catch (_) {
-      // brak cichej zgody (sesja/cookies/pierwsza zgoda) lub weryfikacja → brama Connect
+      // not_connected / offline → brama Connect (redirect)
     }
   }
 
@@ -261,9 +246,20 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     );
   }
 
+  // Connect = pełnostronicowy REDIRECT do backendu (zgoda Google przez redirect, NIE popup). Po
+  // powrocie (?drive=connected) apka startuje i _autoConnect dostaje token z backendu → /photos.
+  // Szew testowy: gdy wstrzyknięto engineBuilder (test) łączymy nim wprost (bez redirectu).
+  void _onConnectPressed() {
+    if (widget.engineBuilder != null) {
+      _connect();
+      return;
+    }
+    connectDrive();
+  }
+
   Widget _connectGate() => Center(
         child: ElevatedButton.icon(
-          onPressed: _connect,
+          onPressed: _onConnectPressed,
           icon: const Icon(Icons.cloud),
           label: const Text('Connect Google Drive'),
         ),

@@ -12,3 +12,8 @@ Future<bool> hasValidDriveToken() async => false;
 
 // Nie-web: brak trwałego tokenu do wyczyszczenia.
 Future<void> clearDriveToken() async {}
+
+// Nie-web: podłączenie przez redirect działa tylko na web.
+Future<void> connectDrive() async {
+  throw UnsupportedError('connectDrive: tylko web');
+}
