@@ -229,15 +229,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   message: _relayError ?? 'No relay assigned to this account'),
       direct
           ? UploadScreen(
-              // Direct: bez gotowego silnika — brama connect buduje DirectEngine po user-gesture.
-              // Token NIE trzymany w HomeScreen (to był kształt wycieku cross-account) — DirectEngine
-              // dostaje tylko funkcję getDriveAccessToken (wiązanie per-uid żyje w niej).
+              // Direct: token bierze backend (odnawia refresh) — ciche, bez popupu. Jeśli podłączony →
+              // buduj DirectEngine; jeśli nie (404) → redirect zgody (connectDrive). Token NIE w HomeScreen.
               engine: null,
               onConnect: () async {
-                await getDriveAccessToken(); // user-gesture → popup GIS; primuje token per-uid
-                return DirectEngine(accessToken: getDriveAccessToken);
+                try {
+                  await getDriveAccessToken(); // backend GET (ciche)
+                  return DirectEngine(accessToken: getDriveAccessToken);
+                } catch (_) {
+                  await connectDrive(); // brak refresh tokena → redirect zgody (strona odchodzi)
+                  return null;
+                }
               },
-              hasValidToken: hasValidDriveToken, // cichy auto-connect po powrocie na tab
+              // Sonduj backend: podłączony → auto-connect bez klikania (parytet z relay).
+              hasValidToken: () async {
+                try {
+                  await getDriveAccessToken();
+                  return true;
+                } catch (_) {
+                  return false;
+                }
+              },
               autoPickNonce: _uploadNonce)
           : UploadScreen(
               engine: hasRelay ? _relay : null, autoPickNonce: _uploadNonce),
