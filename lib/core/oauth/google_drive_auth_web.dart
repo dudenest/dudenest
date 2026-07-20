@@ -135,7 +135,7 @@ Future<String> getDriveAccessToken({bool silent = false, String? hint}) async {
 
   final client = _initTokenClient(_GisTokenClientConfig(
     client_id: googleWebClientId,
-    scope: driveFileScope,
+    scope: googleGisScopes, // drive.file + openid email (email → weryfikacja konta przy cichym connect)
     callback: onToken.toJS,
   ));
   // silent → prompt:'' (bez UI, bez gestu; błąd gdy Google nie przyzna cicho). interaktywnie →

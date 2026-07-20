@@ -6,6 +6,8 @@ import '../../core/storage/direct_engine.dart';
 import '../../core/storage/storage_engine.dart';
 import 'gallery_screen.dart';
 import 'gallery_settings.dart';
+import 'native_media.dart';
+import 'video_player_widget.dart';
 
 /// Tryb „Dudenest bez relay" wpięty w główną galerię za flagą `EngineMode.direct` (E3c).
 ///
@@ -57,30 +59,22 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   //     cudze konto). Mismatch/fail → brama Connect. Login GitHub/Apple/demo → brama (brak konta Google).
   Future<void> _autoConnect() async {
     if (await hasValidDriveToken()) {
-      debugPrint('[dnest-diag] autoConnect: cached token → connect');
       if (mounted && _files == null && !_loading) _connect();
       return;
     }
     final u = AuthService().user;
-    debugPrint('[dnest-diag] autoConnect: provider=${u?.provider} email=${u?.email}');
-    if (u == null || u.provider != 'google' || u.email.isEmpty) {
-      debugPrint('[dnest-diag] autoConnect: gate (nie-Google/brak email)');
-      return; // → brama Connect
-    }
+    if (u == null || u.provider != 'google' || u.email.isEmpty) return; // → brama Connect
     try {
       await getDriveAccessToken(silent: true, hint: u.email); // bez popupu; rzuca gdy brak cichej zgody
-      debugPrint('[dnest-diag] autoConnect: silent token OK');
       final driveEmail =
           await DirectEngine(accessToken: getDriveAccessToken).driveAccountEmail();
-      final match = driveEmail.toLowerCase() == u.email.toLowerCase();
-      debugPrint('[dnest-diag] autoConnect: driveEmail="$driveEmail" userEmail="${u.email}" match=$match');
-      if (!match) {
+      if (driveEmail.toLowerCase() != u.email.toLowerCase()) {
         await clearDriveToken(); // cudze/nieznane konto Google → NIE używaj
         return; // → brama Connect
       }
       if (mounted && _files == null && !_loading) _connect();
-    } catch (e) {
-      debugPrint('[dnest-diag] autoConnect: silent/verify FAILED: $e'); // dyskryminuje silent-fail vs verify-fail
+    } catch (_) {
+      // brak cichej zgody (sesja/cookies/pierwsza zgoda) lub weryfikacja → brama Connect
     }
   }
 
@@ -193,16 +187,24 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
     ));
   }
 
-  // MVP: tap na obrazie → pełny podgląd przez StorageEngine.original. Wideo/pliki nie-obrazowe odroczone.
-  void _openImage(String id, String name) {
+  // Tap → pełny podgląd przez NATYWNY element przeglądarki (blob URL): obraz KAŻDEGO formatu (avif/heic
+  // też — CanvasKit ich nie dekoduje, przeglądarka tak) oraz wideo. Bajty tokenem (downloadFile).
+  void _openMedia(String id, String name) {
     final engine = _engine;
-    if (engine == null || !_isImage(name)) {
+    if (engine == null) return;
+    final isVid = _isVideo(name);
+    if (!_isImage(name) && !isVid) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Preview of videos and non-image files: coming soon (direct mode MVP).')));
+          content: Text('Preview for this file type is not supported yet.')));
       return;
     }
+    final f = _files?.firstWhere((e) => e['file_id'] == id, orElse: () => const <String, dynamic>{});
+    final mime = (f?['mime'] as String?)?.isNotEmpty == true
+        ? f!['mime'] as String
+        : (isVid ? 'video/mp4' : 'application/octet-stream');
     Navigator.push(context, MaterialPageRoute(
-        builder: (_) => _DirectImageViewer(image: engine.original(id), title: name)));
+        builder: (_) => _DirectMediaViewer(
+            engine: engine, fileId: id, title: name, mime: mime, isVideo: isVid)));
   }
 
   @override
@@ -251,7 +253,7 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
       settings: GallerySettings(),
       selected: _selected,
       selectionMode: _selectionMode,
-      onOpen: _openImage,
+      onOpen: _openMedia,
       onToggleSelect: _toggleSelect,
       isImage: _isImage,
       isVideo: _isVideo,
@@ -281,24 +283,73 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
       );
 }
 
-// Minimalny pełnoekranowy podgląd obrazu (bez relaya) — bajty z Drive przez StorageEngine.original.
-class _DirectImageViewer extends StatelessWidget {
-  final ImageProvider image;
+// Pełnoekranowy podgląd bez relaya przez NATYWNY element przeglądarki. Pobiera bajty tokenem
+// (downloadFile) → blob URL → <img> (każdy format, w tym avif/heic) lub <video>. Blob zwalniany w dispose.
+class _DirectMediaViewer extends StatefulWidget {
+  final StorageEngine engine;
+  final String fileId;
   final String title;
-  const _DirectImageViewer({required this.image, required this.title});
+  final String mime;
+  final bool isVideo;
+  const _DirectMediaViewer(
+      {required this.engine,
+      required this.fileId,
+      required this.title,
+      required this.mime,
+      required this.isVideo});
+  @override
+  State<_DirectMediaViewer> createState() => _DirectMediaViewerState();
+}
+
+class _DirectMediaViewerState extends State<_DirectMediaViewer> {
+  String? _url;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final bytes = await widget.engine.downloadFile(widget.fileId); // surowe bajty, tokenem
+      final url = makeObjectUrl(bytes, widget.mime);
+      if (!mounted) {
+        revokeObjectUrl(url);
+        return;
+      }
+      setState(() => _url = url);
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    }
+  }
+
+  @override
+  void dispose() {
+    final u = _url;
+    if (u != null) revokeObjectUrl(u); // zwolnij pamięć bloba
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.black,
-        appBar: AppBar(title: Text(title), backgroundColor: Colors.black),
-        body: Center(
-          child: InteractiveViewer(
-            child: Image(
-              image: image,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.broken_image, color: Colors.white24, size: 64),
-            ),
-          ),
-        ),
+        appBar: AppBar(title: Text(widget.title), backgroundColor: Colors.black),
+        body: Center(child: _body()),
       );
+
+  Widget _body() {
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text('Could not load media.\n$_error',
+            style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
+      );
+    }
+    final url = _url;
+    if (url == null) return const CircularProgressIndicator();
+    if (widget.isVideo) return VideoPlayerWidget(videoUrl: url, headers: const {});
+    return NativeImageView(objectUrl: url);
+  }
 }

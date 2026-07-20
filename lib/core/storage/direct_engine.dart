@@ -160,16 +160,16 @@ class DirectEngine implements StorageEngine {
     }
   }
 
-  // Email konta Google powiązanego z AKTYWNYM tokenem Drive. Używane do weryfikacji izolacji przy
-  // cichym auto-connect: akceptujemy token tylko gdy Drive-email == email Dudenest usera (inaczej
-  // w współdzielonej przeglądarce silent GIS mógłby zwrócić cudze konto).
+  // Email konta Google powiązanego z AKTYWNYM tokenem. `userinfo` (scope `email`) — NIE Drive `/about`,
+  // bo `about.get` pod samym `drive.file` nie zwraca emaila. Do weryfikacji izolacji przy cichym
+  // auto-connect: akceptujemy token tylko gdy to konto == email Dudenest usera (inaczej w współdzielonej
+  // przeglądarce silent GIS mógłby zwrócić cudze konto).
   Future<String> driveAccountEmail() async {
     final data = _decode(
-        await _http.get(Uri.parse('$_api/about?fields=user(emailAddress)'),
+        await _http.get(Uri.parse('https://www.googleapis.com/oauth2/v3/userinfo'),
             headers: await _authHeaders()),
-        'about');
-    final user = (data['user'] as Map<String, dynamic>?) ?? const {};
-    return (user['emailAddress'] as String?) ?? '';
+        'userinfo');
+    return (data['email'] as String?) ?? '';
   }
 
   @override
@@ -249,18 +249,15 @@ class DirectEngine implements StorageEngine {
         link = data['thumbnailLink'] as String?;
         if (link != null) _thumbLinks[fileId] = link;
       }
-      print('[dnest-diag] thumb $fileId size=$size thumbnailLink=${link == null ? "NULL" : "present"}');
       if (link != null) {
         // thumbnailLink = podpisany URL lh3 z suffiksem rozmiaru `=sN`.
         final sized = link.replaceFirst(RegExp(r'=s\d+(-c)?$'), '=s$size');
         final resp = await _http.get(Uri.parse(sized));
-        print('[dnest-diag] thumb $fileId lh3status=${resp.statusCode} bytes=${resp.bodyBytes.length}');
         if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) return resp.bodyBytes;
       }
-    } catch (e) {
-      print('[dnest-diag] thumb $fileId ERROR: $e'); // metadata/lh3/CORS → fallback niżej
+    } catch (_) {
+      // metadata/lh3/CORS → fallback niżej
     }
-    print('[dnest-diag] thumb $fileId → fallback raw downloadFile (CanvasKit może nie zdekodować avif/heic)');
     // Fallback na oryginał (alt=media, sprawdzony): gdy brak thumbnailLink (świeży upload) LUB lh3
     // zawiodło (CORS/403/pusty). Gwarantuje render miniatury zamiast broken_image; cover-fit skaluje.
     return downloadFile(fileId);
