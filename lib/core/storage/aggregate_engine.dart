@@ -19,6 +19,9 @@ import 'storage_engine.dart';
 class AggregateEngine implements StorageEngine {
   final Map<String, StorageEngine> _engines; // kolejność = priorytet; pierwszy = konto domyślne (upload)
   final Map<String, String> _owner = {}; // file_id → accountId; przebudowywany od zera w listFiles
+  /// accountId'y, których `listFiles` padło przy ostatnim odświeżeniu (np. odwołany token). Diagnostyka
+  /// — jedno złe konto NIE gasi galerii (partial results); UI może to pokazać. Puste = wszystkie OK.
+  final List<String> lastListErrors = [];
 
   AggregateEngine(Map<String, StorageEngine> engines) : _engines = engines;
 
@@ -64,13 +67,29 @@ class AggregateEngine implements StorageEngine {
   @override
   Future<List<Map<String, dynamic>>> listFiles() async {
     _owner.clear(); // przebuduj indeks od zera — usunięte pliki muszą zniknąć z routingu
+    lastListErrors.clear();
+    // Per-konto + równolegle: padnięcie JEDNEGO konta (np. odwołany/wygasły token) NIE gasi całej
+    // galerii — zbieramy częściowe wyniki i notujemy które konto padło. To sedno multi-konta.
+    final results = await Future.wait(_engines.entries.map((e) async {
+      try {
+        return MapEntry(e.key, await e.value.listFiles());
+      } catch (_) {
+        lastListErrors.add(e.key);
+        return MapEntry(e.key, const <Map<String, dynamic>>[]);
+      }
+    }));
+    // Wszystkie konta padły (a jakieś były) → to realny błąd połączenia: rzuć, żeby ekran pokazał
+    // stan błędu/„Reconnect" zamiast pustego grida udającego „brak plików".
+    if (_engines.isNotEmpty && lastListErrors.length == _engines.length) {
+      throw StorageException(
+          'AggregateEngine: wszystkie konta (${_engines.length}) nie odpowiedziały przy listFiles');
+    }
     final out = <Map<String, dynamic>>[];
-    for (final entry in _engines.entries) {
-      final files = await entry.value.listFiles();
-      for (final f in files) {
-        f['account_id'] = entry.key; // tag konta na mapie pliku (dla UI/routingu)
+    for (final r in results) {
+      for (final f in r.value) {
+        f['account_id'] = r.key; // tag konta na mapie pliku (dla UI/routingu)
         final id = f['file_id'] as String?;
-        if (id != null && id.isNotEmpty) _owner[id] = entry.key;
+        if (id != null && id.isNotEmpty) _owner[id] = r.key;
         out.add(f);
       }
     }

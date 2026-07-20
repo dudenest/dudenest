@@ -11,15 +11,18 @@ import 'package:dudenest/core/storage/storage_engine.dart';
 class _FakeEngine implements StorageEngine {
   final String tag; // do rozpoznania, który silnik obsłużył wywołanie
   final List<Map<String, dynamic>> files;
+  final Object? throwOnList; // gdy != null, listFiles rzuca (symuluje odwołany/wygasły token konta)
   final List<String> deleted = [];
   final List<String> downloaded = [];
   final List<String> uploaded = [];
-  _FakeEngine(this.tag, {List<Map<String, dynamic>>? files}) : files = files ?? [];
+  _FakeEngine(this.tag, {List<Map<String, dynamic>>? files, this.throwOnList}) : files = files ?? [];
 
   // Zwracaj ŚWIEŻE kopie map — inaczej AggregateEngine mutuje account_id na współdzielonej mapie.
   @override
-  Future<List<Map<String, dynamic>>> listFiles() async =>
-      files.map((f) => Map<String, dynamic>.from(f)).toList();
+  Future<List<Map<String, dynamic>>> listFiles() async {
+    if (throwOnList != null) throw throwOnList!;
+    return files.map((f) => Map<String, dynamic>.from(f)).toList();
+  }
 
   @override
   Future<void> deleteFile(String fileId) async {
@@ -142,6 +145,26 @@ void main() {
     expect(() => agg.downloadFile('f2'), throwsA(isA<StorageException>()));
     await agg.downloadFile('f1'); // f1 nadal routuje
     expect(a.downloaded, ['f1']);
+  });
+
+  test('jedno konto pada → partial results z konta zdrowego + lastListErrors', () async {
+    final good = _FakeEngine('GOOD', files: [file('f1'), file('f2')]);
+    final bad = _FakeEngine('BAD', throwOnList: StateError('token revoked'));
+    final agg = AggregateEngine({'good': good, 'bad': bad});
+    final out = await agg.listFiles();
+    expect(out.map((f) => f['file_id']), containsAll(['f1', 'f2'])); // galeria NIE zgasła
+    expect(out.every((f) => f['account_id'] == 'good'), isTrue);
+    expect(agg.lastListErrors, ['bad']); // padłe konto odnotowane
+    await agg.downloadFile('f1'); // zdrowe konto nadal routuje
+    expect(good.downloaded, ['f1']);
+  });
+
+  test('wszystkie konta padają → StorageException (ekran pokaże błąd, nie pusty grid)', () async {
+    final agg = AggregateEngine({
+      'a': _FakeEngine('A', throwOnList: StateError('x')),
+      'b': _FakeEngine('B', throwOnList: StateError('y')),
+    });
+    expect(() => agg.listFiles(), throwsA(isA<StorageException>()));
   });
 
   test('pusty agregat: isEmpty, listFiles puste, upload rzuca', () async {
