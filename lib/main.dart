@@ -11,6 +11,7 @@ import 'core/auth/auth_service.dart';
 import 'core/network/relay_client.dart';
 import 'features/auth/login_screen.dart';
 import 'features/storage_accounts/accounts_screen.dart';
+import 'features/storage_accounts/direct_accounts_screen.dart';
 import 'features/upload/upload_screen.dart';
 import 'features/relay/relay_screen.dart';
 import 'features/update/update_screen.dart';
@@ -490,6 +491,14 @@ class SettingsScreen extends StatelessWidget {
             value: engineMode == EngineMode.direct,
             onChanged: (v) =>
                 onEngineModeChanged(v ? EngineMode.direct : EngineMode.relay),
+          ),
+          ListTile(
+            leading: const Icon(Icons.manage_accounts),
+            title: const Text('Direct Accounts'),
+            subtitle: const Text('Google Drive accounts used in direct mode (multi-account)'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const DirectAccountsScreen())),
           ),
         ],
         const Divider(),

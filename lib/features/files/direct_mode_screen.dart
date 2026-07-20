@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../core/oauth/google_drive_auth.dart';
-import '../../core/storage/direct_engine.dart';
+import '../../core/storage/aggregate_engine.dart';
+import '../../core/storage/direct_account.dart';
 import '../../core/storage/storage_engine.dart';
 import 'gallery_screen.dart';
 import 'gallery_settings.dart';
@@ -16,7 +17,7 @@ import 'video_player_widget.dart';
 /// degraduje do „połącz ponownie", nie do pustego/zepsutego grida. `engineBuilder` to szew testowy.
 class DirectModeScreen extends StatefulWidget {
   final String folder; // 'photos' | 'files'
-  final StorageEngine Function()? engineBuilder; // default → DirectEngine(getDriveAccessToken)
+  final StorageEngine Function()? engineBuilder; // szew testowy; default → AggregateEngine.fromAccounts (multi-konto)
   final Future<FilePickerResult?> Function()? filePicker; // szew testowy; default → FilePicker.platform
   const DirectModeScreen({super.key, required this.folder, this.engineBuilder, this.filePicker});
   @override
@@ -75,8 +76,12 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
   Future<void> _connect() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final engine = widget.engineBuilder?.call() ?? DirectEngine(accessToken: getDriveAccessToken);
-      final all = await engine.listFiles(); // OAuth GIS → Drive REST, bez relaya
+      // Multi-konto (MP1b): domyślnie agregat wszystkich kont direct usera (merge listFiles, routing per
+      // account_id). Test wstrzykuje engineBuilder (fake). AccountsService cache'uje tokeny per konto.
+      final engine = widget.engineBuilder != null
+          ? widget.engineBuilder!.call()
+          : await AggregateEngine.fromAccounts(AccountsService());
+      final all = await engine.listFiles(); // konta → Drive REST wprost, bez relaya
       final files = all.where(_matchesFolder).toList(growable: false);
       if (!mounted) return;
       setState(() { _engine = engine; _files = files; _loading = false; });
