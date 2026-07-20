@@ -248,6 +248,8 @@ class _DirectModeScreenState extends State<DirectModeScreen> {
       isImage: _isImage,
       isVideo: _isVideo,
       fileIcon: _fileIcon,
+      // Etykiety kont na kafelkach tylko przy realnym multi-koncie (>1) — inaczej szum dla 1 konta.
+      showAccountBadges: _engine is AggregateEngine && (_engine as AggregateEngine).accountCount > 1,
     );
   }
 
