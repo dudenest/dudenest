@@ -1,7 +1,7 @@
 # Deployment — Flutter Web on NETOL Docker Swarm
 
 **Author**: Dariusz Porczyński
-**Last Updated**: 2026-04-07
+**Last Updated**: 2026-07-22
 **Status**: ✅ LIVE — pipeline active, app running on Swarm
 
 ---
@@ -100,6 +100,11 @@ services:
 - **Cache**: `Cloudflare-CDN-Cache-Control: no-store` for non-hashed JS files
 - **Post-deploy purge**: automated via `CF_API_TOKEN` + `CF_ZONE_ID` secrets
 - **Browser Cache TTL**: set to "Respect Existing Headers" in Cloudflare dashboard
+
+### GA4
+- The GA4 tag is loaded by `web/index.html` in the document head, before Flutter startup, using measurement ID `G-0N2MNDEFDC`.
+- After deployment, open the deployed web app and confirm the tag in Google Analytics → **Reports → Realtime** (the visit should appear within a few minutes).
+- For a debug validation, enable Google Analytics DebugView for the test browser, open the deployed app, and confirm the resulting activity under **Admin → Data display → DebugView**.
 
 ### HAProxy (ns2, 206.189.31.117)
 - **Domain**: `app.dudenest.com`
