@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/auth/auth_service.dart';
 import '../../core/auth/web_utils.dart';
+import '../../core/analytics/analytics.dart';
 import 'starfield_background.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -89,6 +90,7 @@ class _TryDemoButtonState extends State<_TryDemoButton> {
   bool _busy = false;
 
   Future<void> _go() async {
+    Analytics.event('demo_cta_click');
     setState(() => _busy = true);
     try {
       await AuthService().signInDemo();

@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'web_utils.dart';
 import 'user_model.dart';
+import '../analytics/analytics.dart';
 
 // OAuth flow: Flutter → api.dudenest.com/auth/{provider} → Google/GitHub/Apple
 //             → api.dudenest.com/auth/callback → dudenest.com?token=JWT&user=base64(JSON)
@@ -15,6 +16,8 @@ import 'user_model.dart';
 const _apiBase = 'https://api.dudenest.com';
 const _kToken = 'auth_token';
 const _kUser = 'auth_user';
+const _kPendingProvider = 'pending_oauth_provider';
+bool shouldTrackGoogleLogin(String? provider) => provider == 'google';
 
 class AuthService {
   static final AuthService _i = AuthService._();
@@ -43,6 +46,8 @@ class AuthService {
     final callbackUser = uri.queryParameters['user'];
     if (callbackToken != null) {
       await _saveSession(callbackToken, callbackUser);
+      if (shouldTrackGoogleLogin(prefs.getString(_kPendingProvider))) Analytics.event('login', {'method': 'google'});
+      await prefs.remove(_kPendingProvider);
       historyReplaceState(uri.replace(queryParameters: {}).toString()); // clean URL
     } else if (uri.queryParameters['demo'] == '1' && !isLoggedIn) {
       // Deep link ?demo=1 (landing CTA): start a demo session automatically.
@@ -80,7 +85,9 @@ class AuthService {
   }
 
   // Redirects browser to backend OAuth — page navigates away, returns with ?token=JWT
-  void signInWith(String provider) {
+  Future<void> signInWith(String provider) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPendingProvider, provider);
     final returnUrl = Uri.encodeComponent(
       getLocationHref().split('?').first.split('#').first,
     );
@@ -93,5 +100,6 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kToken);
     await prefs.remove(_kUser);
+    await prefs.remove(_kPendingProvider);
   }
 }

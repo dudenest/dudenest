@@ -6,6 +6,11 @@
 
 ---
 
+## GA4 event counters
+
+The web app sends `demo_cta_click` without parameters, `login` with `{method: "google"}` only after a successful Google callback, and virtual `page_view` events with the official `page_location` set to the current origin plus `/photos`, `/files`, or `/settings`, and the matching `page_title`. `page_path` is retained as a convenience parameter. No event contains email, UID, token, or query-string data. Review them in **Google Analytics → Reports → Engagement → Events** and **Reports → Engagement → Pages and screens**. For validation, open **Admin → Data display → DebugView**, enable GA debug mode in the test browser, perform the action, and confirm the event name, `page_location`, and `page_title` there.
+
+
 ## Deployment Architecture
 
 ```

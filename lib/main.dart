@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // built-in glyphs (Icons.facebook etc.) plus generic widgets for ones Material doesn't ship.
 import 'package:url_launcher/url_launcher.dart';
 import 'core/auth/auth_service.dart';
+import 'core/analytics/analytics.dart';
 import 'core/network/relay_client.dart';
 import 'features/auth/login_screen.dart';
 import 'features/storage_accounts/accounts_screen.dart';
@@ -50,6 +51,7 @@ class DudenestAppState extends State<DudenestApp> {
   @override
   void initState() {
     super.initState();
+    Analytics.pageView('/photos', 'Photos');
     _loadSettings();
   }
 
@@ -277,6 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _tab = i;
             if (i == 2) _uploadNonce++;
           });
+          if (i == 0 || i == 1 || i == 3) Analytics.pageView(analyticsPathForTab(i), analyticsTitleForTab(i));
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.image), label: 'Photos'),
