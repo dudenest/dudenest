@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../../core/storage/storage_engine.dart';
+import 'account_badge.dart';
 import 'date_group_model.dart';
 import 'gallery_settings.dart';
 
@@ -22,6 +23,7 @@ class JustifiedGrid extends StatefulWidget {
   final bool Function(String name) isImage;
   final bool Function(String name) isVideo;
   final IconData Function(String name) fileIcon;
+  final bool showAccountBadges;
 
   const JustifiedGrid({
     super.key,
@@ -37,6 +39,7 @@ class JustifiedGrid extends StatefulWidget {
     required this.isImage,
     required this.isVideo,
     required this.fileIcon,
+    this.showAccountBadges = false,
   });
 
   @override
@@ -100,6 +103,7 @@ class _JustifiedGridState extends State<JustifiedGrid> {
               width: w, height: rowH,
               child: Stack(fit: StackFit.expand, children: [
                 _buildTile(id, name, rowH),
+                if (widget.showAccountBadges) AccountBadge(file: f),
                 if (widget.selectionMode) _buildSelectionOverlay(isSelected),
               ]),
             ),
