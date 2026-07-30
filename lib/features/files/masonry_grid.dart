@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../core/storage/storage_engine.dart';
+import 'account_badge.dart';
 import 'date_group_model.dart';
 import 'gallery_settings.dart';
 
@@ -18,6 +19,7 @@ class MasonryGrid extends StatelessWidget {
   final bool Function(String name) isImage;
   final bool Function(String name) isVideo;
   final IconData Function(String name) fileIcon;
+  final bool showAccountBadges;
 
   const MasonryGrid({
     super.key,
@@ -33,6 +35,7 @@ class MasonryGrid extends StatelessWidget {
     required this.isImage,
     required this.isVideo,
     required this.fileIcon,
+    this.showAccountBadges = false,
   });
 
   double _ratio(Map<String, dynamic> f) {
@@ -72,6 +75,7 @@ class MasonryGrid extends StatelessWidget {
           if (isVideo(name))
             const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 36,
                 shadows: [Shadow(color: Colors.black54, blurRadius: 8)])),
+          if (showAccountBadges) AccountBadge(file: f),
           if (selectionMode) AnimatedContainer(
             duration: const Duration(milliseconds: 120),
             color: isSelected ? Colors.black54 : Colors.black26,

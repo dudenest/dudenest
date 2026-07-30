@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/storage/storage_engine.dart';
+import 'account_badge.dart';
 import 'date_group_model.dart';
 import 'date_scrubbar.dart';
 import 'gallery_settings.dart';
@@ -19,6 +20,7 @@ class GalleryScreen extends StatefulWidget {
   final bool Function(String name) isImage;
   final bool Function(String name) isVideo;
   final IconData Function(String name) fileIcon;
+  final bool showAccountBadges; // multi-konto direct: pokaż etykietę konta na kafelku (relay = false)
 
   const GalleryScreen({
     super.key,
@@ -32,6 +34,7 @@ class GalleryScreen extends StatefulWidget {
     required this.isImage,
     required this.isVideo,
     required this.fileIcon,
+    this.showAccountBadges = false,
   });
 
   @override
@@ -102,6 +105,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           onOpen: widget.onOpen, onToggleSelect: widget.onToggleSelect,
           selected: widget.selected, selectionMode: widget.selectionMode,
           isImage: widget.isImage, isVideo: widget.isVideo, fileIcon: widget.fileIcon,
+          showAccountBadges: widget.showAccountBadges,
         );
       case GalleryViewMode.masonry:
         return MasonryGrid(
@@ -110,6 +114,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           onOpen: widget.onOpen, onToggleSelect: widget.onToggleSelect,
           selected: widget.selected, selectionMode: widget.selectionMode,
           isImage: widget.isImage, isVideo: widget.isVideo, fileIcon: widget.fileIcon,
+          showAccountBadges: widget.showAccountBadges,
         );
       case GalleryViewMode.square:
         return _SquareGrid(
@@ -118,6 +123,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           onOpen: widget.onOpen, onToggleSelect: widget.onToggleSelect,
           selected: widget.selected, selectionMode: widget.selectionMode,
           isImage: widget.isImage, isVideo: widget.isVideo, fileIcon: widget.fileIcon,
+          showAccountBadges: widget.showAccountBadges,
         );
       case GalleryViewMode.list:
         return _ListView(
@@ -146,6 +152,7 @@ class _SquareGrid extends StatelessWidget {
   final bool Function(String name) isImage;
   final bool Function(String name) isVideo;
   final IconData Function(String name) fileIcon;
+  final bool showAccountBadges;
 
   const _SquareGrid({
     required this.groups, required this.settings, required this.relay,
@@ -153,6 +160,7 @@ class _SquareGrid extends StatelessWidget {
     required this.onOpen, required this.onToggleSelect,
     required this.selected, required this.selectionMode,
     required this.isImage, required this.isVideo, required this.fileIcon,
+    this.showAccountBadges = false,
   });
 
   @override
@@ -195,6 +203,7 @@ class _SquareGrid extends StatelessWidget {
                   if (isVideo(name))
                     const Center(child: Icon(Icons.play_circle_outline, color: Colors.white, size: 36,
                         shadows: [Shadow(color: Colors.black54, blurRadius: 8)])),
+                  if (showAccountBadges) AccountBadge(file: f),
                   if (selectionMode) AnimatedContainer(
                     duration: const Duration(milliseconds: 120),
                     color: isSelected ? Colors.black54 : Colors.black26,
