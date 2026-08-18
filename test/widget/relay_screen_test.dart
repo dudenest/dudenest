@@ -6,6 +6,8 @@ import 'package:http/testing.dart';
 import 'package:network_image_mock/network_image_mock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dudenest/core/network/relay_client.dart';
+import 'package:dudenest/features/files/gallery_settings.dart';
+import 'package:dudenest/features/files/tile_manifest_cache.dart';
 import 'package:dudenest/features/relay/relay_screen.dart';
 
 RelayClient _relay(MockClientHandler h) =>
@@ -88,6 +90,54 @@ void main() {
       await tester.pump();
 
       expect(find.text('photo.jpg'), findsOneWidget);
+    });
+  });
+
+  testWidgets('recovers full file list when unchanged manifest has empty cache',
+      (tester) async {
+    final seen = <String>[];
+    final relay = _relay((req) async {
+      seen.add(req.url.path);
+      if (req.url.path == '/files/manifest') {
+        return http.Response('{"revision":"r1","unchanged":true}', 200,
+            headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/files') {
+        return http.Response(
+            jsonEncode({
+              'files': [
+                {
+                  'file_id': 'p1',
+                  'name': 'photo.jpg',
+                  'size': 1024,
+                  'folder': 'photos',
+                  'created': '2026-04-06T12:00:00Z'
+                }
+              ]
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      }
+      if (req.url.path == '/providers') {
+        return http.Response('{"providers":[]}', 200,
+            headers: {'content-type': 'application/json'});
+      }
+      return http.Response('error', 404);
+    });
+
+    await TileManifestCache.save(relay.baseUrl, 'r0', [], GallerySettings());
+
+    await mockNetworkImagesFor(() async {
+      await tester
+          .pumpWidget(_wrap(RelayScreen(relay: relay, folder: 'photos')));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byIcon(Icons.list));
+      await tester.pump();
+
+      expect(find.text('photo.jpg'), findsOneWidget);
+      expect(seen, contains('/files'));
     });
   });
 

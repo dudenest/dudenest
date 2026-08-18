@@ -125,6 +125,8 @@ class _RelayScreenState extends State<RelayScreen> {
         revision = manifest['revision'] as String? ?? revision;
         if (!unchanged) {
           files = List<Map<String, dynamic>>.from(manifest['files'] ?? []);
+        } else if (files.isEmpty) {
+          files = await widget.relay.listFiles();
         }
       } on RelayException catch (e) {
         final legacyManifestMiss = e.statusCode == 404 ||
