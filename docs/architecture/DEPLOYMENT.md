@@ -1,7 +1,6 @@
 # Deployment — Flutter Web on NETOL Docker Swarm
 
-**Author**: Dariusz Porczyński
-**Last Updated**: 2026-07-22
+**Last Updated**: 2026-09-03
 **Status**: ✅ LIVE — pipeline active, app running on Swarm
 
 ---
@@ -31,11 +30,10 @@ push → github.com/dudenest/dudenest (main)
     ┌─────────────────────────────────────────────┐
     │ Job: deploy (self-hosted, label: netol-swarm)│
     │  Runner: node006.netol.io (Docker Swarm mgr) │
-    │  1. docker login ghcr.io ($GITHUB_TOKEN)     │
-    │  2. docker stack deploy dudenest-app         │
-    │     --with-registry-auth (forwarded to nodes)│
-    │  3. docker service ps dudenest-app_app       │
-    │  4. Purge Cloudflare cache (CF_API_TOKEN)    │
+    │  1. docker stack deploy dudenest-app         │
+    │     --resolve-image always, no registry auth │
+    │  2. docker service ps dudenest-app_app       │
+    │  3. Purge Cloudflare cache (CF_API_TOKEN)    │
     └─────────────────────────────────────────────┘
          │
          ▼
@@ -98,7 +96,9 @@ services:
 ### GHCR (GitHub Container Registry)
 - **Image**: `ghcr.io/dudenest/dudenest`
 - **Tags**: `latest` + `<git-sha>` on every push
-- **Auth**: `GITHUB_TOKEN` (built-in, automatic)
+- **Build auth**: `GITHUB_TOKEN` is used only by the GitHub-hosted build job to push the public image.
+- **Swarm pull auth**: none. The package is public and Swarm pulls anonymously. Do not use `--with-registry-auth` for this service: Docker persists deploy-time auth in the Swarm service spec, so a short-lived GitHub Actions token can expire and break later cold reschedules even though anonymous/manual pulls work.
+- **Existing-service caveat**: removing `--with-registry-auth` prevents new short-lived auth from being propagated, but may not clear old service-level auth already stored by Swarm. One-time cleanup should be performed only after Swarm has quorum margin restored (at least 4/5 managers reachable), then verified by a cold reschedule onto a node without the image cached.
 
 ### Cloudflare CDN
 - **Domain**: `app.dudenest.com` (proxied, orange cloud)

@@ -71,15 +71,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
       # s338: removed `Mirror to registry.netol.io` step. The dudenest/dudenest GHCR package is PUBLIC,
       # so Swarm nodes can pull directly from ghcr.io anonymously (no auth needed). The mirror was
       # designed for private packages (cf. dudenest-backup which was private pre-s334). For public
       # packages it adds nothing — and the gitlab.netol.io token lacks write permission to the
-      # dudenest/dudenest mirror namespace anyway. Per-node persistent docker login (s332) handles
-      # the auth case if GHCR ever becomes rate-limited.
+      # dudenest/dudenest mirror namespace anyway. Do not pass the short-lived GITHUB_TOKEN to
+      # Swarm: task reschedules can reuse the expired service-level auth and fail public GHCR pulls.
 
       - name: Deploy to Docker Swarm
         env:
@@ -87,7 +84,6 @@ jobs:
         run: |
           IMAGE_TAG=$IMAGE_TAG docker stack deploy \
             --compose-file docker/app/docker-stack.yml \
-            --with-registry-auth \
             --resolve-image always \
             dudenest-app   # s335: stack name web → app (reserved for landing page)
 
