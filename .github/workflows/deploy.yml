@@ -100,8 +100,13 @@ jobs:
         run: |
           # s337: app canonical = dudenest.com (NOT app.dudenest.com). Both hosts still route via Traefik,
           # but cache purge for canonical host is what matters for end users.
+          # Branding icons are purged too: their filenames carry no content hash, so a redeploy alone
+          # leaves the edge serving the previous image (s417 — a favicon change stayed invisible for weeks).
+          HOSTS="https://dudenest.com https://app.dudenest.com"
+          PATHS="main.dart.js index.html flutter_bootstrap.js flutter.js favicon.png icons/Icon-192.png icons/Icon-512.png icons/Icon-maskable-192.png icons/Icon-maskable-512.png"
+          FILES=$(for h in $HOSTS; do for p in $PATHS; do echo "\"$h/$p\""; done; done | paste -sd, -)
           curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
             -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            --data '{"files":["https://dudenest.com/main.dart.js","https://dudenest.com/index.html","https://dudenest.com/flutter_bootstrap.js","https://dudenest.com/flutter.js","https://app.dudenest.com/main.dart.js","https://app.dudenest.com/index.html","https://app.dudenest.com/flutter_bootstrap.js","https://app.dudenest.com/flutter.js"]}' \
+            --data "{\"files\":[$FILES]}" \
             | grep -o '"success":[a-z]*'
